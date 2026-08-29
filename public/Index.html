@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Rival Surge</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="overlay">
+    <div id="connectionBanner" style="display:none;"></div>
+    <div id="arenaCorner">
+      <button id="arenaActionButton" class="icon-button" title="Create a new arena">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="9" cy="8" r="4" fill="currentColor" />
+          <rect x="2" y="14" width="14" height="8" fill="currentColor" />
+          <circle cx="18" cy="6" r="5.2" fill="#0b1b25" stroke="currentColor" stroke-width="1.5" />
+          <path d="M18 3.6V8.4M15.6 6H20.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        <span id="arenaActionLabel">Create</span>
+      </button>
+      <button id="joinButton">Join</button>
+    </div>
+    <div id="arenaCodePopup" style="display:none;">
+      <div id="arenaCodePopupLabel">Join Code</div>
+      <div id="arenaCodeText"></div>
+      <div id="arenaPlayerCount"></div>
+      <button id="copyArenaCodeBtn">Copy</button>
+    </div>
+
+    <div id="title">Rival Surge</div>
+    <div id="hud">
+      <div id="health">Health: 100</div>
+      <div id="armor">Armor: 25</div>
+      <div id="weapon">Weapon: Rifle</div>
+    </div>
+    <div id="objective">Objective: Sweep the arena and defend your land.</div>
+
+    <div id="gameChat">
+      <div id="gameChatLog"></div>
+      <div id="gameChatInputWrap">
+        <input id="gameChatInput" type="text" maxlength="200" placeholder="Press Enter to send, Esc to cancel" autocomplete="off" />
+      </div>
+    </div>
+
+    <button id="usernameButton">Username</button>
+
+    <div id="message" class="menu-box"></div>
+
+    <div id="deployBar">
+      <div id="deployRow">
+        <input id="lobbyUsernameInput" type="text" maxlength="24" placeholder="Enter name" autocomplete="off" />
+        <button id="playButton">PLAY</button>
+      </div>
+      <div id="deployHint">Click to look around • WASD to walk • Create or join an arena top-left, or press PLAY for a random one</div>
+    </div>
+
+    <!-- Username modal -->
+    <div id="usernameModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); z-index:9999; pointer-events:auto;">
+      <div style="background:#0b1b25; padding:18px; border-radius:8px; width:320px; box-shadow:0 6px 18px rgba(0,0,0,0.6); color:#e6f7ff; margin:auto;">
+        <label for="usernameInput" style="display:block; margin-bottom:8px; font-weight:600;">Username:</label>
+        <input id="usernameInput" type="text" maxlength="24" placeholder="Enter your name" style="width:100%; padding:8px; border-radius:6px; border:1px solid #2b4656; background:#072029; color:#e6f7ff;" />
+        <div style="text-align:right; margin-top:10px;"><button id="usernameCancel" style="padding:6px 10px; margin-right:8px;">Cancel</button><button id="usernameSave" style="padding:6px 10px;">Save</button></div>
+      </div>
+    </div>
+
+    <!-- Join code modal -->
+    <div id="joinCodeModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); z-index:9999; pointer-events:auto;">
+      <div style="background:#0b1b25; padding:18px; border-radius:8px; width:320px; box-shadow:0 6px 18px rgba(0,0,0,0.6); color:#e6f7ff; margin:auto;">
+        <label for="joinCodeInput" style="display:block; margin-bottom:8px; font-weight:600;">Join Code:</label>
+        <input id="joinCodeInput" type="text" maxlength="6" placeholder="ABCDE" autocomplete="off" style="width:100%; padding:8px; border-radius:6px; border:1px solid #2b4656; background:#072029; color:#e6f7ff; text-transform:uppercase; letter-spacing:0.1em; box-sizing:border-box;" />
+        <div id="joinCodeError" style="color:#ff6b6b; font-size:0.8rem; margin-top:6px; min-height:1em;"></div>
+        <div style="text-align:right; margin-top:10px;"><button id="joinCodeCancel" style="padding:6px 10px;">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="weaponIcon" aria-hidden="true"></div>
+  <div id="mobileControls" aria-label="Mobile controls">
+    <div id="joystickArea" class="touch-pad" aria-label="Movement joystick">
+      <div id="joystickBase">
+        <div id="joystickKnob"></div>
+      </div>
+    </div>
+    <div class="touch-actions">
+      <button class="touch-btn action-btn" data-action="jump">Jump</button>
+      <button class="touch-btn action-btn" data-action="fire">Fire</button>
+    </div>
+  </div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/"
+      }
+    }
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="Index.js"></script>
+</body>
+</html>

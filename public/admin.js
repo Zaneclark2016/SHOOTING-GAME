@@ -33,9 +33,15 @@ socket.on('players-list', (players) => {
       const health = p.health ?? '?';
       const alive = p.alive === false ? ' (dead)' : '';
       const arena = p.arena ? ` — Arena: ${escapeHtml(p.arena)}` : '';
-      return `<div class="player">${escapeHtml(name)} — HP: ${escapeHtml(String(health))}${alive}${arena}</div>`;
+      return `<div class="player"><div>${escapeHtml(name)} — HP: ${escapeHtml(String(health))}${alive}${arena}</div><button class="kick-btn" data-player-id="${escapeHtml(id)}">Kick</button></div>`;
     })
     .join('');
+
+  playersEl.querySelectorAll('.kick-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      socket.emit('admin-kick-player', button.dataset.playerId);
+    });
+  });
 });
 
 // -------------------------------

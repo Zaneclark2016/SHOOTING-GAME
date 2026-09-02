@@ -26,6 +26,7 @@ const arenas = {};
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid confusion
 const CODE_LENGTH = 5;
+const SPAWN_PROTECTION_MS = 3000;
 
 function generateJoinCode() {
   let code;
@@ -47,13 +48,22 @@ function makePlayerEntry(name) {
     rotY: 0,
     weapon: 'rifle',
     health: 100,
-    alive: true
+    alive: true,
+    spawnProtectionUntil: Date.now() + SPAWN_PROTECTION_MS
   };
 }
 
 function broadcastArena(code) {
   if (!arenas[code]) return;
-  io.to(code).emit('players-list', arenas[code].players);
+  const players = Object.fromEntries(
+    Object.entries(arenas[code].players).map(([id, player]) => [
+      id,
+      Object.assign({}, player, {
+        spawnProtected: player.spawnProtectionUntil > Date.now()
+      })
+    ])
+  );
+  io.to(code).emit('players-list', players);
   broadcastAdminState();
 }
 
@@ -84,7 +94,14 @@ function enterArena(socket, code, name) {
   socket.join(code);
   arenas[code].players[socket.id] = makePlayerEntry(name);
 
-  socket.emit('init-players', arenas[code].players);
+  socket.emit('init-players', Object.fromEntries(
+    Object.entries(arenas[code].players).map(([id, player]) => [
+      id,
+      Object.assign({}, player, {
+        spawnProtected: player.spawnProtectionUntil > Date.now()
+      })
+    ])
+  ));
   broadcastArena(code);
 }
 
@@ -98,6 +115,25 @@ io.on('connection', (socket) => {
   socket.on('admin-subscribe', () => {
     socket.join('__admin__');
     broadcastAdminState();
+  });
+
+  socket.on('admin-kick-player', (targetId) => {
+    if (typeof targetId !== 'string') return;
+
+    for (const code of Object.keys(arenas)) {
+      const target = arenas[code].players[targetId];
+      if (!target) continue;
+
+      const targetSocket = io.sockets.sockets.get(targetId);
+      delete arenas[code].players[targetId];
+      if (targetSocket) {
+        targetSocket.leave(code);
+        targetSocket.data.arenaCode = null;
+        targetSocket.emit('kicked-from-arena');
+      }
+      broadcastArena(code);
+      return;
+    }
   });
 
   // Create a brand-new arena with a fresh, unused join code and deploy
@@ -141,11 +177,22 @@ io.on('connection', (socket) => {
     if (typeof cb === 'function') cb({ ok: true, code });
   });
 
+  socket.on('respawn', () => {
+    const code = socket.data.arenaCode;
+    const player = code && arenas[code] && arenas[code].players[socket.id];
+    if (!player || player.alive) return;
+    player.health = 100;
+    player.alive = true;
+    player.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
+    broadcastArena(code);
+  });
+
   // Index.js sends this ~10x/sec with position, rotation, weapon, health, alive
   socket.on('update', (data) => {
     const code = socket.data.arenaCode;
     if (!code || !arenas[code] || !arenas[code].players[socket.id]) return;
-    Object.assign(arenas[code].players[socket.id], data);
+    const { spawnProtectionUntil, ...playerUpdate } = data || {};
+    Object.assign(arenas[code].players[socket.id], playerUpdate);
     broadcastArena(code);
   });
 
@@ -161,9 +208,10 @@ io.on('connection', (socket) => {
   socket.on('hit', ({ targetId, damage } = {}) => {
     const code = socket.data.arenaCode;
     if (!code || !arenas[code] || !targetId || typeof damage !== 'number') return;
-    if (!arenas[code].players[targetId]) return; // target must be in the same arena
-    io.to(targetId).emit('player-hit', targetId, damage);
     const target = arenas[code].players[targetId];
+    if (!target) return; // target must be in the same arena
+    if (target.spawnProtectionUntil > Date.now()) return;
+    io.to(targetId).emit('player-hit', targetId, damage);
     target.health = Math.max(0, (target.health ?? 100) - damage);
     if (target.health <= 0) target.alive = false;
     broadcastArena(code);

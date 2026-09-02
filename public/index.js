@@ -172,8 +172,11 @@ const player = {
   weapon: 'rifle',
   weaponCooldown: 0,
   reloadTimer: 0,
+  rifleAmmo: 35,
+  rifleMagazineSize: 35,
   shotgunAmmo: 8,
   shotgunReserve: 18,
+  spawnProtectionTimer: 0,
   started: false,
   alive: true,
   message: 'Awaiting deployment'
@@ -189,8 +192,280 @@ const state = {
   objectiveProgress: 0,
   botId: 0,
   fireHeld: false,
+  aimHeld: false,
   fadeOut: 0
 };
+
+let audioContext = null;
+let shotNoiseBuffer = null;
+const rifleShotAudio = new Audio('/audio/rifle-shot.mp3');
+const shotgunShotAudio = new Audio('/audio/shotgun-shot.mp3');
+const shotgunReloadAudio = new Audio('/audio/shotgun-reload.mp3');
+const rifleReloadAudio = new Audio('/audio/rifle-reload.mp3');
+const activeRifleShots = new Set();
+rifleShotAudio.preload = 'auto';
+shotgunShotAudio.preload = 'auto';
+shotgunReloadAudio.preload = 'auto';
+rifleReloadAudio.preload = 'auto';
+
+function getAudioContext() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContext = new AudioContextClass();
+  }
+  if (audioContext.state === 'suspended') audioContext.resume();
+  return audioContext;
+}
+
+function getShotNoiseBuffer(context) {
+  if (shotNoiseBuffer && shotNoiseBuffer.sampleRate === context.sampleRate) return shotNoiseBuffer;
+  const length = Math.floor(context.sampleRate * 0.25);
+  shotNoiseBuffer = context.createBuffer(1, length, context.sampleRate);
+  const samples = shotNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < samples.length; i += 1) {
+    // Slightly shape the noise so it is a punch rather than a constant hiss.
+    samples[i] = (Math.random() * 2 - 1) * Math.exp(-i / (context.sampleRate * 0.055));
+  }
+  return shotNoiseBuffer;
+}
+
+function playGunshot(weapon) {
+  if (weapon === 'rifle' || weapon === 'shotgun') {
+    const shotAudio = weapon === 'rifle' ? rifleShotAudio : shotgunShotAudio;
+    const shot = shotAudio.cloneNode();
+    shot.volume = weapon === 'rifle' ? 0.78 : 0.82;
+    activeRifleShots.add(shot);
+    const stopShot = () => {
+      shot.pause();
+      shot.currentTime = 0;
+      activeRifleShots.delete(shot);
+    };
+    const playback = shot.play();
+    if (playback) playback.catch(() => {});
+    window.setTimeout(stopShot, weapon === 'rifle' ? 390 : 500);
+    return;
+  }
+
+  const context = getAudioContext();
+  if (!context) return;
+
+  const now = context.currentTime;
+  const isShotgun = false;
+  const output = context.createGain();
+  const compressor = context.createDynamicsCompressor();
+  const crackFilter = context.createBiquadFilter();
+  const bodyFilter = context.createBiquadFilter();
+  const bodyShape = context.createBiquadFilter();
+  const crack = context.createBufferSource();
+  const body = context.createBufferSource();
+  const crackGain = context.createGain();
+  const bodyGain = context.createGain();
+
+  output.gain.setValueAtTime(isShotgun ? 0.62 : 0.52, now);
+  compressor.threshold.setValueAtTime(-18, now);
+  compressor.knee.setValueAtTime(8, now);
+  compressor.ratio.setValueAtTime(8, now);
+  compressor.attack.setValueAtTime(0.001, now);
+  compressor.release.setValueAtTime(0.12, now);
+
+  crackFilter.type = 'highpass';
+  crackFilter.frequency.setValueAtTime(isShotgun ? 1100 : 1500, now);
+  bodyFilter.type = 'lowpass';
+  bodyFilter.frequency.setValueAtTime(isShotgun ? 3600 : 4300, now);
+  bodyFilter.frequency.exponentialRampToValueAtTime(1100, now + 0.14);
+  bodyShape.type = 'highpass';
+  bodyShape.frequency.setValueAtTime(90, now);
+
+  crack.buffer = getShotNoiseBuffer(context);
+  crackGain.gain.setValueAtTime(isShotgun ? 1.0 : 0.85, now);
+  crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+  body.buffer = getShotNoiseBuffer(context);
+  bodyGain.gain.setValueAtTime(isShotgun ? 0.95 : 0.78, now);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, now + (isShotgun ? 0.2 : 0.13));
+
+  crack.connect(crackGain).connect(crackFilter);
+  body.connect(bodyGain).connect(bodyFilter).connect(bodyShape);
+  crackFilter.connect(compressor);
+  bodyShape.connect(compressor);
+  compressor.connect(output).connect(context.destination);
+  crack.start(now);
+  body.start(now);
+  crack.stop(now + 0.08);
+  body.stop(now + 0.25);
+}
+
+function playShotgunReload() {
+  const reloadSound = shotgunReloadAudio.cloneNode();
+  reloadSound.volume = 0.8;
+  const playback = reloadSound.play();
+  if (playback) playback.catch(() => {});
+}
+
+function playRifleReload() {
+  const reloadSound = rifleReloadAudio.cloneNode();
+  reloadSound.volume = 0.8;
+  const playback = reloadSound.play();
+  if (playback) playback.catch(() => {});
+}
+
+let firstPersonWeapon = null;
+
+function disposeFirstPersonWeapon() {
+  if (!firstPersonWeapon) return;
+  camera.remove(firstPersonWeapon);
+  firstPersonWeapon.traverse((child) => {
+    if (child.isMesh) {
+      child.geometry.dispose();
+      child.material.dispose();
+    }
+  });
+  firstPersonWeapon = null;
+}
+
+function createFirstPersonWeapon() {
+  disposeFirstPersonWeapon();
+
+  const weapon = new THREE.Group();
+  const darkMetal = new THREE.MeshStandardMaterial({ color: 0xd76522, roughness: 0.38, metalness: 0.72 });
+  const gripMaterial = new THREE.MeshStandardMaterial({ color: 0x8f3518, roughness: 0.82, metalness: 0.12 });
+  const accentMetal = new THREE.MeshStandardMaterial({ color: 0xffb347, roughness: 0.3, metalness: 0.88 });
+  const handMaterial = new THREE.MeshStandardMaterial({ color: 0xd99a78, roughness: 0.8 });
+  const barrelLength = player.weapon === 'rifle' ? 0.95 : 0.78;
+  const addPart = (geometry, material, position, rotation = null) => {
+    const part = new THREE.Mesh(geometry, material);
+    part.position.copy(position);
+    if (rotation) part.rotation.set(rotation.x, rotation.y, rotation.z);
+    weapon.add(part);
+    return part;
+  };
+
+  const receiver = new THREE.Mesh(
+    new THREE.BoxGeometry(player.weapon === 'rifle' ? 0.34 : 0.42, 0.24, 0.58),
+    darkMetal
+  );
+  receiver.position.set(0, 0, 0);
+  weapon.add(receiver);
+
+  if (player.weapon === 'rifle') {
+    addPart(new THREE.CylinderGeometry(0.055, 0.07, barrelLength, 12), darkMetal, new THREE.Vector3(0, 0, -0.58 - barrelLength / 2), new THREE.Vector3(Math.PI / 2, 0, 0));
+    addPart(new THREE.BoxGeometry(0.3, 0.12, 0.5), darkMetal, new THREE.Vector3(0, -0.03, 0.48));
+    addPart(new THREE.BoxGeometry(0.18, 0.28, 0.14), gripMaterial, new THREE.Vector3(0, -0.25, 0.03), new THREE.Vector3(-0.15, 0, 0));
+    addPart(new THREE.BoxGeometry(0.13, 0.3, 0.22), darkMetal, new THREE.Vector3(0, -0.25, 0.1), new THREE.Vector3(-0.2, 0, 0));
+    addPart(new THREE.BoxGeometry(0.16, 0.34, 0.22), gripMaterial, new THREE.Vector3(0, -0.27, 0.2), new THREE.Vector3(-0.18, 0, 0));
+    // Rear aperture sight: a square frame attached to the rifle.
+    const sightMaterial = new THREE.MeshStandardMaterial({
+      color: 0x18232b,
+      roughness: 0.42,
+      metalness: 0.8,
+      emissive: 0x0b1d25,
+      emissiveIntensity: 0.35
+    });
+    addPart(new THREE.BoxGeometry(0.035, 0.14, 0.035), sightMaterial, new THREE.Vector3(-0.07, 0.22, -0.08));
+    addPart(new THREE.BoxGeometry(0.035, 0.14, 0.035), sightMaterial, new THREE.Vector3(0.07, 0.22, -0.08));
+    addPart(new THREE.BoxGeometry(0.14, 0.035, 0.035), sightMaterial, new THREE.Vector3(0, 0.29, -0.08));
+  } else {
+    addPart(new THREE.CylinderGeometry(0.075, 0.09, barrelLength, 12), darkMetal, new THREE.Vector3(-0.09, 0, -0.58 - barrelLength / 2), new THREE.Vector3(Math.PI / 2, 0, 0));
+    addPart(new THREE.CylinderGeometry(0.075, 0.09, barrelLength, 12), darkMetal, new THREE.Vector3(0.09, 0, -0.58 - barrelLength / 2), new THREE.Vector3(Math.PI / 2, 0, 0));
+    addPart(new THREE.BoxGeometry(0.36, 0.12, 0.48), gripMaterial, new THREE.Vector3(0, -0.08, 0.46));
+    addPart(new THREE.BoxGeometry(0.34, 0.08, 0.28), darkMetal, new THREE.Vector3(0, -0.13, -0.33));
+    addPart(new THREE.BoxGeometry(0.3, 0.1, 0.28), gripMaterial, new THREE.Vector3(0, -0.17, -0.48));
+    addPart(new THREE.BoxGeometry(0.16, 0.4, 0.2), gripMaterial, new THREE.Vector3(0, -0.29, 0.18), new THREE.Vector3(-0.2, 0, 0));
+    addPart(new THREE.BoxGeometry(0.12, 0.05, 0.28), accentMetal, new THREE.Vector3(0, 0.16, -0.29));
+    // Front sight post on top of the shotgun barrel.
+    addPart(new THREE.BoxGeometry(0.045, 0.14, 0.045), accentMetal, new THREE.Vector3(0, 0.22, -0.58));
+  }
+
+  const hand = addPart(new THREE.SphereGeometry(0.13, 12, 8), handMaterial, new THREE.Vector3(0, -0.2, -0.12));
+  hand.scale.set(1, 0.75, 1.25);
+
+  const supportHand = addPart(new THREE.SphereGeometry(0.12, 12, 8), handMaterial, new THREE.Vector3(0, -0.08, -0.48));
+  supportHand.scale.set(1, 0.8, 1.3);
+
+  weapon.position.set(0.42, -0.38, -0.82);
+  weapon.rotation.set(-0.08, -0.08, 0.04);
+  const muzzleClearance = 0.01;
+  weapon.userData.muzzlePosition = new THREE.Vector3(
+    0,
+    0,
+    -0.58 - barrelLength - muzzleClearance
+  );
+  weapon.userData.basePosition = weapon.position.clone();
+  weapon.userData.baseRotation = weapon.rotation.clone();
+  weapon.visible = state.started && player.alive;
+  camera.add(weapon);
+  firstPersonWeapon = weapon;
+}
+
+function updateFirstPersonWeapon() {
+  if (!firstPersonWeapon) return;
+  firstPersonWeapon.visible = state.started && player.alive;
+
+  const basePosition = firstPersonWeapon.userData.basePosition;
+  const baseRotation = firstPersonWeapon.userData.baseRotation;
+  if (player.reloadTimer > 0 && player.reloadDuration > 0) {
+    const progress = 1 - player.reloadTimer / player.reloadDuration;
+    const dip = Math.sin(progress * Math.PI) * 0.16;
+    const tilt = Math.sin(progress * Math.PI) * 0.9;
+    firstPersonWeapon.position.set(
+      basePosition.x + 0.08 * Math.sin(progress * Math.PI),
+      basePosition.y - dip,
+      basePosition.z + 0.12 * Math.sin(progress * Math.PI)
+    );
+    firstPersonWeapon.rotation.set(
+      baseRotation.x + tilt,
+      baseRotation.y,
+      baseRotation.z - tilt * 0.35
+    );
+  } else {
+    firstPersonWeapon.position.copy(basePosition);
+    firstPersonWeapon.rotation.copy(baseRotation);
+    if (state.aimHeld) {
+      firstPersonWeapon.position.x -= 0.34;
+      firstPersonWeapon.position.y += 0.16;
+      firstPersonWeapon.position.z += 0.2;
+      firstPersonWeapon.rotation.y *= 0.2;
+      firstPersonWeapon.rotation.z *= 0.2;
+    }
+  }
+}
+
+function updateAimState() {
+  camera.fov = 75;
+  camera.updateProjectionMatrix();
+  if (cross) cross.style.opacity = state.aimHeld ? '0' : '0.9';
+  updateFirstPersonWeapon();
+}
+
+function getWeaponMuzzlePosition(localOffset = new THREE.Vector3()) {
+  if (!firstPersonWeapon) return camera.position.clone();
+  camera.updateMatrixWorld(true);
+  return firstPersonWeapon.userData.muzzlePosition.clone()
+    .add(localOffset)
+    .applyMatrix4(firstPersonWeapon.matrixWorld);
+}
+
+function getWeaponAimDirection(origin) {
+  const cameraDirection = new THREE.Vector3();
+  const cameraWorldPosition = new THREE.Vector3();
+  camera.getWorldDirection(cameraDirection);
+  camera.getWorldPosition(cameraWorldPosition);
+  const aimPoint = cameraWorldPosition.addScaledVector(cameraDirection, 100);
+  return aimPoint.sub(origin).normalize();
+}
+
+function getShotgunPelletDirection(origin, spreadX, spreadY) {
+  const aimDirection = getWeaponAimDirection(origin);
+  const cameraRight = new THREE.Vector3();
+  const cameraUp = new THREE.Vector3();
+  camera.updateMatrixWorld(true);
+  cameraRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  cameraUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  return aimDirection
+    .addScaledVector(cameraRight, spreadX)
+    .addScaledVector(cameraUp, spreadY)
+    .normalize();
+}
 
 // Multiplayer client: connect to server and manage remote players
 let socket = null;
@@ -209,6 +484,22 @@ const EYE_HEIGHT = 1.7;
 // y=0. This offset lifts the group so the feet (not the local origin) touch
 // the ground.
 const MODEL_GROUND_OFFSET = 0.5;
+
+function createForcefieldVisual() {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x5cf4c8,
+    transparent: true,
+    opacity: 0.3,
+    wireframe: true,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1.45, 24, 16),
+    material
+  );
+  mesh.renderOrder = 2;
+  return { mesh, material };
+}
 
 function createRemotePlayer(id, data = {}) {
   if (remotePlayers.has(id)) return;
@@ -253,14 +544,26 @@ function createRemotePlayer(id, data = {}) {
   rLegPivot.add(rLeg);
   group.add(rLegPivot);
 
+  const forcefield = createForcefieldVisual();
+  forcefield.mesh.position.y = 1;
+  forcefield.mesh.visible = false;
+  group.add(forcefield.mesh);
+
   group.position.set(data.x || 0, (data.y ?? EYE_HEIGHT) - EYE_HEIGHT + MODEL_GROUND_OFFSET, data.z || 42);
-  group.userData = { health: data.health ?? 100, alive: data.alive ?? true, radius: 0.9 };
+  group.userData = {
+    health: data.health ?? 100,
+    alive: data.alive ?? true,
+    radius: 0.9,
+    spawnProtectionUntil: data.spawnProtectionUntil ?? 0,
+    spawnProtected: data.spawnProtected === true
+  };
   group.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
   scene.add(group);
   remotePlayers.set(id, {
     mesh: group,
     data,
     legs: { left: lLegPivot, right: rLegPivot },
+    forcefield,
     lastPos: new THREE.Vector2(group.position.x, group.position.z),
     walkPhase: 0,
     isWalking: false
@@ -278,6 +581,8 @@ function removeRemotePlayer(id) {
   const p = remotePlayers.get(id);
   if (p) {
     scene.remove(p.mesh);
+    p.forcefield.mesh.geometry.dispose();
+    p.forcefield.material.dispose();
     remotePlayers.delete(id);
   }
 }
@@ -297,6 +602,12 @@ function updateRemotePlayer(id, data = {}) {
   }
   if (data.health !== undefined) p.mesh.userData.health = data.health;
   if (data.alive !== undefined) p.mesh.userData.alive = data.alive;
+  if (data.spawnProtectionUntil !== undefined) {
+    p.mesh.userData.spawnProtectionUntil = data.spawnProtectionUntil;
+  }
+  if (data.spawnProtected !== undefined) {
+    p.mesh.userData.spawnProtected = data.spawnProtected === true;
+  }
 }
 
 // swing remote players' legs back and forth while they're moving, and ease
@@ -306,6 +617,14 @@ function updateRemoteWalkAnimations(dt) {
   const MAX_SWING = 0.6;
 
   for (const p of remotePlayers.values()) {
+    const protectionRemaining = p.mesh.userData.spawnProtectionUntil - Date.now();
+    p.forcefield.mesh.visible = p.mesh.userData.spawnProtected === true && protectionRemaining > 0;
+    if (p.forcefield.mesh.visible) {
+      p.forcefield.mesh.rotation.y += dt * 1.8;
+      p.forcefield.mesh.rotation.x += dt * 0.7;
+      p.forcefield.material.opacity = 0.2 + Math.min(0.18, protectionRemaining / 3000 * 0.18);
+    }
+
     if (!p.legs) continue;
 
     if (p.isWalking && p.mesh.userData.alive !== false) {
@@ -448,10 +767,9 @@ function setPlayerName(name) {
     socket.on('player-fired', (id, payload) => {
       if (id === socket.id) return;
       try {
+        playGunshot(payload.weapon);
         const origin = new THREE.Vector3(payload.position.x, payload.position.y, payload.position.z);
         const dir = new THREE.Vector3(payload.dir.x, payload.dir.y, payload.dir.z);
-        addTracer(origin, dir, 0xff6b6b);
-
         // spawn projectile visuals for remote fire so shots are visible
         if (payload.weapon === 'shotgun') {
           for (let i = 0; i < 8; i += 1) {
@@ -462,8 +780,6 @@ function setPlayerName(name) {
             shotDir.normalize();
             spawnProjectile(origin.clone(), shotDir, { ownerId: id, speed: 120, ttl: 1.0, damage: 10, color: 0xffefb8 });
           }
-        } else {
-          spawnProjectile(origin.clone(), dir.clone(), { ownerId: id, speed: 220, ttl: 1.2, damage: 18, color: 0xbfe7ff });
         }
 
       } catch (e) { /* ignore malformed payload */ }
@@ -478,6 +794,18 @@ function setPlayerName(name) {
 
     socket.on('server-chat', (entry) => {
       appendChatMessage(entry);
+    });
+
+    socket.on('kicked-from-arena', () => {
+      for (const id of Array.from(remotePlayers.keys())) removeRemotePlayer(id);
+      currentArenaCode = null;
+      if (arenaCodePopup) arenaCodePopup.style.display = 'none';
+      if (arenaActionButton) arenaActionButton.title = 'Create a new arena';
+      if (joinButton) joinButton.style.display = '';
+      resetToLobby();
+      overlayMsg.textContent = 'You were kicked from the arena — click PLAY to rejoin';
+      overlayMsg.style.display = 'block';
+      if (controls.isLocked) controls.unlock();
     });
 
     // periodically send our state to the server
@@ -715,7 +1043,6 @@ if (lobbyUsernameInput) {
 }
 
 const bots = [];
-const effects = [];
 const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const touchLook = { active: false, lastX: 0, lastY: 0 };
 const touchActions = {
@@ -748,6 +1075,8 @@ function resetInputState() {
   touchActions.fire = false;
   touchLook.active = false;
   state.fireHeld = false;
+  state.aimHeld = false;
+  updateAimState();
   if (typeof resetJoystick === 'function') resetJoystick();
 }
 
@@ -839,23 +1168,23 @@ function updateHud() {
 
   hud.objective.textContent = 'Objective: Sweep the arena and defend your land.';
 
-  // update weapon icon + HUD card
+  if (!firstPersonWeapon || firstPersonWeapon.userData.weapon !== player.weapon) {
+    createFirstPersonWeapon();
+    firstPersonWeapon.userData.weapon = player.weapon;
+  }
+  updateFirstPersonWeapon();
+
+  // update weapon info card
   try {
     if (weaponIconEl) {
       const name = player.weapon === 'rifle' ? 'Rifle' : 'Shotgun';
-      const ammoText = player.weapon === 'rifle' ? 'Ammo: ∞' : `${player.shotgunAmmo}/${player.shotgunReserve}`;
+      const ammoText = player.weapon === 'rifle'
+        ? `${player.rifleAmmo}/${player.rifleMagazineSize} (∞ reserve)`
+        : `${player.shotgunAmmo}/${player.shotgunReserve}`;
       const reloadPct = (player.reloadDuration && player.reloadDuration > 0) ? Math.max(0, Math.min(1, 1 - (player.reloadTimer / player.reloadDuration))) : 0;
-      let svg = '';
-      if (player.weapon === 'rifle') {
-        svg = `<svg class="weapon-svg" viewBox="0 0 120 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="6" y="20" width="88" height="6" rx="2" fill="currentColor" /><rect x="96" y="14" width="10" height="20" rx="2" fill="currentColor" opacity="0.9" /><rect x="0" y="24" width="16" height="6" rx="2" fill="currentColor" opacity="0.75" /></svg>`;
-      } else {
-        svg = `<svg class="weapon-svg" viewBox="0 0 120 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="10" y="18" width="64" height="8" rx="2" fill="currentColor" /><rect x="78" y="20" width="8" height="6" rx="1" fill="currentColor" opacity="0.95" /><rect x="2" y="24" width="20" height="6" rx="2" fill="currentColor" opacity="0.75" /><rect x="36" y="26" width="22" height="4" rx="1" fill="currentColor" opacity="0.6" /></svg>`;
-      }
-
       const reloadBar = `<div class="reload-bar"><div class="reload-fill" style="width:${Math.round(reloadPct * 100)}%"></div></div>`;
 
       weaponIconEl.innerHTML = `
-        ${svg}
         <div class="weapon-info">
           <div class="weapon-name">${name}</div>
           <div class="ammo-count">${ammoText}</div>
@@ -877,8 +1206,11 @@ function resetPlayer() {
   player.weapon = 'rifle';
   player.weaponCooldown = 0;
   player.reloadTimer = 0;
+  player.rifleAmmo = player.rifleMagazineSize;
   player.shotgunAmmo = 8;
   player.shotgunReserve = 18;
+  player.spawnProtectionTimer = 3;
+  createSpawnForcefield();
   player.message = 'Arena live';
   state.win = false;
   state.objectiveProgress = 0;
@@ -898,6 +1230,8 @@ function resetToLobby() {
   player.health = 100;
   player.armor = 25;
   player.alive = true;
+  player.spawnProtectionTimer = 0;
+  if (typeof updateSpawnForcefield === 'function') updateSpawnForcefield(0);
   player.message = 'In the lobby — press PLAY to deploy';
   updateHud();
 }
@@ -970,15 +1304,26 @@ if (playButton) {
   });
 }
 
-function reloadShotgun() {
-  if (player.reloadTimer > 0 || player.shotgunAmmo === 8 || player.shotgunReserve <= 0) return;
-  player.reloadDuration = 1.15;
+function reloadWeapon() {
+  if (player.reloadTimer > 0) return;
+  if (player.weapon === 'rifle' && player.rifleAmmo === player.rifleMagazineSize) return;
+  if (player.weapon === 'shotgun' && (player.shotgunAmmo === 8 || player.shotgunReserve <= 0)) return;
+  player.reloadDuration = player.weapon === 'shotgun' ? 4.5 : 3.5;
   player.reloadTimer = player.reloadDuration;
-  player.message = 'Reloading shotgun';
+  if (player.weapon === 'shotgun') playShotgunReload();
+  else playRifleReload();
+  player.message = `Reloading ${player.weapon}`;
   updateHud();
 }
 
 function completeReload() {
+  if (player.weapon === 'rifle') {
+    player.rifleAmmo = player.rifleMagazineSize;
+    player.message = 'Rifle reloaded';
+    player.reloadDuration = 0;
+    updateHud();
+    return;
+  }
   const needed = Math.max(0, 8 - player.shotgunAmmo);
   const loaded = Math.min(needed, player.shotgunReserve);
   player.shotgunAmmo += loaded;
@@ -990,25 +1335,51 @@ function completeReload() {
 }
 
 function switchWeapon() {
-  if (!state.started || !player.alive) return;
+  if (!state.started || !player.alive || player.reloadTimer > 0) return;
   player.weapon = player.weapon === 'rifle' ? 'shotgun' : 'rifle';
   player.message = `Switched to ${player.weapon === 'rifle' ? 'rifle' : 'shotgun'}`;
   updateHud();
 }
 
-function addTracer(origin, direction, color = 0xffd886) {
-  const geometry = new THREE.BufferGeometry().setFromPoints([
-    origin,
-    origin.clone().add(direction.clone().multiplyScalar(16))
-  ]);
-  const material = new THREE.LineBasicMaterial({ color });
-  const line = new THREE.Line(geometry, material);
-  scene.add(line);
-  effects.push({ line, ttl: 0.08 });
-}
-
 // projectile visuals and logic
 const projectiles = [];
+const spawnForcefield = {
+  mesh: null,
+  material: null
+};
+
+function createSpawnForcefield() {
+  if (spawnForcefield.mesh) {
+    scene.remove(spawnForcefield.mesh);
+    spawnForcefield.mesh.geometry.dispose();
+    spawnForcefield.material.dispose();
+  }
+
+  const forcefield = createForcefieldVisual();
+  spawnForcefield.mesh = forcefield.mesh;
+  spawnForcefield.material = forcefield.material;
+  scene.add(spawnForcefield.mesh);
+}
+
+function updateSpawnForcefield(dt) {
+  if (player.spawnProtectionTimer <= 0) {
+    if (spawnForcefield.mesh) {
+      scene.remove(spawnForcefield.mesh);
+      spawnForcefield.mesh.geometry.dispose();
+      spawnForcefield.material.dispose();
+      spawnForcefield.mesh = null;
+      spawnForcefield.material = null;
+    }
+    return;
+  }
+
+  player.spawnProtectionTimer = Math.max(0, player.spawnProtectionTimer - dt);
+  if (!spawnForcefield.mesh) createSpawnForcefield();
+  spawnForcefield.mesh.position.copy(player.position);
+  spawnForcefield.mesh.rotation.y += dt * 1.8;
+  spawnForcefield.mesh.rotation.x += dt * 0.7;
+  spawnForcefield.material.opacity = 0.2 + Math.min(0.18, player.spawnProtectionTimer / 3 * 0.18);
+}
 
 function spawnProjectile(origin, direction, opts = {}) {
   const speed = opts.speed || 120;
@@ -1026,7 +1397,15 @@ function spawnProjectile(origin, direction, opts = {}) {
   mesh.receiveShadow = false;
   scene.add(mesh);
 
-  projectiles.push({ mesh, dir: direction.clone(), speed, ttl, ownerId, damage, radius });
+  projectiles.push({
+    mesh,
+    dir: direction.clone(),
+    speed,
+    ttl,
+    ownerId,
+    damage,
+    radius
+  });
 }
 
 function updateProjectiles(dt) {
@@ -1039,7 +1418,6 @@ function updateProjectiles(dt) {
       continue;
     }
 
-    // move
     p.mesh.position.addScaledVector(p.dir, p.speed * dt);
 
     // check collision with bots
@@ -1103,38 +1481,56 @@ function fireWeapon() {
   if (player.reloadTimer > 0) return;
   if (player.weaponCooldown > 0) return;
 
-  const origin = camera.position.clone();
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
+  const origin = getWeaponMuzzlePosition();
+  const dir = getWeaponAimDirection(origin);
+  playGunshot(player.weapon);
 
   if (player.weapon === 'shotgun') {
     if (player.shotgunAmmo <= 0) {
-      reloadShotgun();
+      reloadWeapon();
       return;
     }
     player.shotgunAmmo -= 1;
     for (let i = 0; i < 8; i += 1) {
-      const shotDir = dir.clone();
-      shotDir.x += (Math.random() - 0.5) * 0.12;
-      shotDir.y += (Math.random() - 0.5) * 0.12;
-      shotDir.z += (Math.random() - 0.5) * 0.12;
-      shotDir.normalize();
-      hitScan(origin, shotDir, 18, 10, 0xffefb8);
-      // spawn a visual pellet locally
-      spawnProjectile(origin.clone(), shotDir, { ownerId: socket && socket.id ? socket.id : null, speed: 140, ttl: 0.9, damage: 10, color: 0xffefb8 });
+      const barrelX = i % 2 === 0 ? -0.16 : 0.16;
+      const pelletOrigin = getWeaponMuzzlePosition(new THREE.Vector3(barrelX, 0, -0.12));
+      const shotDir = getShotgunPelletDirection(
+        pelletOrigin,
+        (Math.random() - 0.5) * 0.45,
+        (Math.random() - 0.5) * 0.45
+      );
+      hitScan(pelletOrigin, shotDir, 18, 10, 0xffefb8);
+      spawnProjectile(pelletOrigin, shotDir, {
+        ownerId: socket && socket.id ? socket.id : null,
+        speed: 140,
+        ttl: 0.3,
+        damage: 10,
+        radius: 0.06,
+        color: 0xffefb8
+      });
     }
     player.weaponCooldown = 0.52;
-    addTracer(origin, dir, 0xfff0be);
   } else {
+    if (player.rifleAmmo <= 0) {
+      reloadWeapon();
+      return;
+    }
+    player.rifleAmmo -= 1;
     player.weaponCooldown = 0.1;
     hitScan(origin, dir, 30, 18, 0xbfe7ff);
-    addTracer(origin, dir, 0xbfe7ff);
-    // spawn a visual projectile for rifle
-    spawnProjectile(origin.clone(), dir.clone(), { ownerId: socket && socket.id ? socket.id : null, speed: 320, ttl: 0.8, damage: 18, color: 0xbfe7ff });
+    spawnProjectile(origin.clone(), dir.clone(), {
+      ownerId: socket && socket.id ? socket.id : null,
+      speed: 90,
+      ttl: 0.8,
+      damage: 18,
+      radius: 0.045,
+      color: 0xffd166
+    });
   }
 
-  if (player.weapon === 'shotgun' && player.shotgunAmmo === 0) {
-    reloadShotgun();
+  if ((player.weapon === 'rifle' && player.rifleAmmo === 0)
+    || (player.weapon === 'shotgun' && player.shotgunAmmo === 0)) {
+    reloadWeapon();
   }
 
   // notify server of our fire so other clients can show tracers and resolve hits locally
@@ -1218,6 +1614,8 @@ function hitScan(origin, direction, maxDistance, damage, color) {
 }
 
 function applyDamage(amount) {
+  if (player.spawnProtectionTimer > 0) return;
+
   if (player.armor > 0) {
     const absorbed = Math.min(player.armor, amount * 0.6);
     player.armor -= absorbed;
@@ -1275,24 +1673,12 @@ function updateBots(dt) {
         }
         bot.userData.shootCooldown = 1.1 + Math.random() * 1.2;
         if (Math.random() < 0.65) {
-          addTracer(origin, shotDirection, 0xff6b6b);
         }
       }
     }
 
     if (dist < 2.2) {
       applyDamage(12 * dt);
-    }
-  }
-}
-
-function updateEffects(dt) {
-  for (let i = effects.length - 1; i >= 0; i -= 1) {
-    const effect = effects[i];
-    effect.ttl -= dt;
-    if (effect.ttl <= 0) {
-      scene.remove(effect.line);
-      effects.splice(i, 1);
     }
   }
 }
@@ -1370,11 +1756,26 @@ function handleKey(e, isDown) {
 
   if (isDown) {
     if (e.code === 'KeyQ') switchWeapon();
-    if (e.code === 'KeyR') reloadShotgun();
-    if (e.code === 'Digit1') player.weapon = 'rifle';
-    if (e.code === 'Digit2') player.weapon = 'shotgun';
+    if (e.code === 'KeyR') reloadWeapon();
+    if (e.code === 'Digit1') {
+      if (player.reloadTimer <= 0) {
+        player.weapon = 'rifle';
+        updateHud();
+      }
+    }
+    if (e.code === 'Digit2') {
+      if (player.reloadTimer <= 0) {
+        player.weapon = 'shotgun';
+        updateHud();
+      }
+    }
     if (e.code === 'Space') triggerJump();
     if (e.code === 'KeyT' && document.activeElement?.tagName !== 'INPUT') toggleDebugWalker();
+  }
+
+  if (e.code === 'KeyE' && isDown && !e.repeat) {
+    state.aimHeld = !state.aimHeld;
+    updateAimState();
   }
 
   if (e.code === 'KeyW') moveState.forward = isDown ? 1 : 0;
@@ -1455,6 +1856,7 @@ function bindTouchControls() {
       if (state.started) {
         state.fireHeld = true;
       }
+
       fireButton.classList.add('active');
     });
     fireButton.addEventListener('pointerup', () => {
@@ -1464,6 +1866,20 @@ function bindTouchControls() {
     fireButton.addEventListener('pointerleave', () => {
       state.fireHeld = false;
       fireButton.classList.remove('active');
+    });
+  }
+
+  const aimButton = document.querySelector('[data-action="aim"]');
+  if (aimButton) {
+    const toggleAiming = () => {
+      state.aimHeld = state.started && !state.aimHeld;
+      aimButton.classList.toggle('active', state.aimHeld);
+      updateAimState();
+    };
+    aimButton.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      aimButton.setPointerCapture(event.pointerId);
+      toggleAiming();
     });
   }
 
@@ -1536,11 +1952,12 @@ overlayMsg.addEventListener('click', (event) => {
     // Handle redeploy after death (when player is dead and game is not started)
     if (!player.alive && !state.started) {
       resetPlayer();
+      player.alive = true;
+      if (socket && socket.connected) socket.emit('respawn');
       resetInputState();
       clearBots();
       startWave();
       state.started = true;
-      player.alive = true;
       overlayMsg.style.display = 'none';
       tryLockPointer();
       return;
@@ -1580,6 +1997,8 @@ const clock = new THREE.Clock();
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
 
+  updateSpawnForcefield(dt);
+
   if (player.alive) {
     updateMovement(dt);
   }
@@ -1603,7 +2022,6 @@ function animate() {
     updateBots(dt);
     attemptObjectiveCapture(dt);
     updateProjectiles(dt);
-    updateEffects(dt);
   }
 
   if (state.started && player.alive && bots.length === 0) {

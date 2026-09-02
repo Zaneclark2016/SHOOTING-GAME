@@ -174,6 +174,7 @@ const player = {
   reloadTimer: 0,
   shotgunAmmo: 8,
   shotgunReserve: 18,
+  spawnProtectionTimer: 0,
   started: false,
   alive: true,
   message: 'Awaiting deployment'
@@ -879,6 +880,8 @@ function resetPlayer() {
   player.reloadTimer = 0;
   player.shotgunAmmo = 8;
   player.shotgunReserve = 18;
+  player.spawnProtectionTimer = 3;
+  createSpawnForcefield();
   player.message = 'Arena live';
   state.win = false;
   state.objectiveProgress = 0;
@@ -1009,6 +1012,52 @@ function addTracer(origin, direction, color = 0xffd886) {
 
 // projectile visuals and logic
 const projectiles = [];
+const spawnForcefield = {
+  mesh: null,
+  material: null
+};
+
+function createSpawnForcefield() {
+  if (spawnForcefield.mesh) {
+    scene.remove(spawnForcefield.mesh);
+    spawnForcefield.mesh.geometry.dispose();
+    spawnForcefield.material.dispose();
+  }
+
+  spawnForcefield.material = new THREE.MeshBasicMaterial({
+    color: 0x5cf4c8,
+    transparent: true,
+    opacity: 0.3,
+    wireframe: true,
+    depthWrite: false
+  });
+  spawnForcefield.mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1.45, 24, 16),
+    spawnForcefield.material
+  );
+  spawnForcefield.mesh.renderOrder = 2;
+  scene.add(spawnForcefield.mesh);
+}
+
+function updateSpawnForcefield(dt) {
+  if (player.spawnProtectionTimer <= 0) {
+    if (spawnForcefield.mesh) {
+      scene.remove(spawnForcefield.mesh);
+      spawnForcefield.mesh.geometry.dispose();
+      spawnForcefield.material.dispose();
+      spawnForcefield.mesh = null;
+      spawnForcefield.material = null;
+    }
+    return;
+  }
+
+  player.spawnProtectionTimer = Math.max(0, player.spawnProtectionTimer - dt);
+  if (!spawnForcefield.mesh) createSpawnForcefield();
+  spawnForcefield.mesh.position.copy(player.position);
+  spawnForcefield.mesh.rotation.y += dt * 1.8;
+  spawnForcefield.mesh.rotation.x += dt * 0.7;
+  spawnForcefield.material.opacity = 0.2 + Math.min(0.18, player.spawnProtectionTimer / 3 * 0.18);
+}
 
 function spawnProjectile(origin, direction, opts = {}) {
   const speed = opts.speed || 120;
@@ -1218,6 +1267,8 @@ function hitScan(origin, direction, maxDistance, damage, color) {
 }
 
 function applyDamage(amount) {
+  if (player.spawnProtectionTimer > 0) return;
+
   if (player.armor > 0) {
     const absorbed = Math.min(player.armor, amount * 0.6);
     player.armor -= absorbed;
@@ -1536,11 +1587,12 @@ overlayMsg.addEventListener('click', (event) => {
     // Handle redeploy after death (when player is dead and game is not started)
     if (!player.alive && !state.started) {
       resetPlayer();
+      player.alive = true;
+      if (socket && socket.connected) socket.emit('respawn');
       resetInputState();
       clearBots();
       startWave();
       state.started = true;
-      player.alive = true;
       overlayMsg.style.display = 'none';
       tryLockPointer();
       return;
@@ -1579,6 +1631,8 @@ const clock = new THREE.Clock();
 
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  updateSpawnForcefield(dt);
 
   if (player.alive) {
     updateMovement(dt);

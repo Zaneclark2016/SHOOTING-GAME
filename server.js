@@ -26,6 +26,7 @@ const arenas = {};
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid confusion
 const CODE_LENGTH = 5;
+const SPAWN_PROTECTION_MS = 3000;
 
 function generateJoinCode() {
   let code;
@@ -47,7 +48,8 @@ function makePlayerEntry(name) {
     rotY: 0,
     weapon: 'rifle',
     health: 100,
-    alive: true
+    alive: true,
+    spawnProtectionUntil: Date.now() + SPAWN_PROTECTION_MS
   };
 }
 
@@ -141,11 +143,22 @@ io.on('connection', (socket) => {
     if (typeof cb === 'function') cb({ ok: true, code });
   });
 
+  socket.on('respawn', () => {
+    const code = socket.data.arenaCode;
+    const player = code && arenas[code] && arenas[code].players[socket.id];
+    if (!player || player.alive) return;
+    player.health = 100;
+    player.alive = true;
+    player.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
+    broadcastArena(code);
+  });
+
   // Index.js sends this ~10x/sec with position, rotation, weapon, health, alive
   socket.on('update', (data) => {
     const code = socket.data.arenaCode;
     if (!code || !arenas[code] || !arenas[code].players[socket.id]) return;
-    Object.assign(arenas[code].players[socket.id], data);
+    const { spawnProtectionUntil, ...playerUpdate } = data || {};
+    Object.assign(arenas[code].players[socket.id], playerUpdate);
     broadcastArena(code);
   });
 
@@ -161,9 +174,10 @@ io.on('connection', (socket) => {
   socket.on('hit', ({ targetId, damage } = {}) => {
     const code = socket.data.arenaCode;
     if (!code || !arenas[code] || !targetId || typeof damage !== 'number') return;
-    if (!arenas[code].players[targetId]) return; // target must be in the same arena
-    io.to(targetId).emit('player-hit', targetId, damage);
     const target = arenas[code].players[targetId];
+    if (!target) return; // target must be in the same arena
+    if (target.spawnProtectionUntil > Date.now()) return;
+    io.to(targetId).emit('player-hit', targetId, damage);
     target.health = Math.max(0, (target.health ?? 100) - damage);
     if (target.health <= 0) target.alive = false;
     broadcastArena(code);

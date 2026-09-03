@@ -132,6 +132,7 @@ io.on('connection', (socket) => {
         targetSocket.emit('kicked-from-arena');
       }
       broadcastArena(code);
+      broadcastAdminState();
       return;
     }
   });
@@ -247,6 +248,7 @@ io.on('connection', (socket) => {
     if (code && arenas[code] && arenas[code].players[socket.id]) {
       delete arenas[code].players[socket.id];
       broadcastArena(code);
+      broadcastAdminState();
     }
   });
 });

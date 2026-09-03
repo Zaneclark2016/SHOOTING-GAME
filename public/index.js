@@ -207,6 +207,32 @@ rifleShotAudio.preload = 'auto';
 shotgunShotAudio.preload = 'auto';
 shotgunReloadAudio.preload = 'auto';
 rifleReloadAudio.preload = 'auto';
+rifleShotAudio.playsInline = true;
+shotgunShotAudio.playsInline = true;
+shotgunReloadAudio.playsInline = true;
+rifleReloadAudio.playsInline = true;
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+
+  const sounds = [rifleShotAudio, shotgunShotAudio, shotgunReloadAudio, rifleReloadAudio];
+  sounds.forEach((sound) => {
+    sound.muted = true;
+    const playback = sound.play();
+    if (playback) {
+      playback.then(() => {
+        sound.pause();
+        sound.currentTime = 0;
+        sound.muted = false;
+      }).catch((error) => {
+        sound.muted = false;
+        console.warn('[audio] unlock failed:', error);
+      });
+    }
+  });
+}
 
 function getAudioContext() {
   if (!audioContext) {
@@ -234,16 +260,19 @@ function playGunshot(weapon) {
   if (weapon === 'rifle' || weapon === 'shotgun') {
     const shotAudio = weapon === 'rifle' ? rifleShotAudio : shotgunShotAudio;
     const shot = shotAudio.cloneNode();
-    shot.volume = weapon === 'rifle' ? 0.78 : 0.82;
+    shot.volume = weapon === 'rifle' ? 1 : 1;
     activeRifleShots.add(shot);
-    const stopShot = () => {
+    const finishShot = () => {
+      activeRifleShots.delete(shot);
+    };
+    shot.addEventListener('ended', finishShot, { once: true });
+    const playback = shot.play();
+    if (playback) playback.catch((error) => console.warn('[audio] gunshot playback failed:', error));
+    window.setTimeout(() => {
       shot.pause();
       shot.currentTime = 0;
       activeRifleShots.delete(shot);
-    };
-    const playback = shot.play();
-    if (playback) playback.catch(() => {});
-    window.setTimeout(stopShot, weapon === 'rifle' ? 390 : 500);
+    }, weapon === 'rifle' ? 390 : 500);
     return;
   }
 
@@ -297,16 +326,16 @@ function playGunshot(weapon) {
 
 function playShotgunReload() {
   const reloadSound = shotgunReloadAudio.cloneNode();
-  reloadSound.volume = 0.8;
+  reloadSound.volume = 1;
   const playback = reloadSound.play();
-  if (playback) playback.catch(() => {});
+  if (playback) playback.catch((error) => console.warn('[audio] shotgun reload playback failed:', error));
 }
 
 function playRifleReload() {
   const reloadSound = rifleReloadAudio.cloneNode();
-  reloadSound.volume = 0.8;
+  reloadSound.volume = 1;
   const playback = reloadSound.play();
-  if (playback) playback.catch(() => {});
+  if (playback) playback.catch((error) => console.warn('[audio] rifle reload playback failed:', error));
 }
 
 let firstPersonWeapon = null;
@@ -1289,6 +1318,7 @@ const playButton = document.getElementById('playButton');
 if (playButton) {
   playButton.addEventListener('click', (event) => {
     event.stopPropagation();
+    unlockAudio();
     if (state.mode !== 'lobby') return;
     if (!socket || !socket.connected) return;
     tryLockPointer();
@@ -1912,6 +1942,7 @@ document.addEventListener('keyup', (event) => handleKey(event, false));
 
 document.addEventListener('mousedown', (event) => {
   if (chatting) return;
+  unlockAudio();
   if (event.button === 0) {
     if (!state.started) {
       // Ignore clicks on UI elements — let their own handlers deal with those
@@ -1943,6 +1974,8 @@ document.addEventListener('mouseup', (event) => {
     state.fireHeld = false;
   }
 });
+
+document.addEventListener('pointerdown', unlockAudio, { once: true });
 
 document.addEventListener('contextmenu', (event) => event.preventDefault());
 document.addEventListener('dblclick', (event) => event.preventDefault());

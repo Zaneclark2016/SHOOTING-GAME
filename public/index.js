@@ -463,7 +463,7 @@ function updateFirstPersonWeapon() {
 function updateAimState() {
   camera.fov = 75;
   camera.updateProjectionMatrix();
-  if (cross) cross.style.opacity = state.aimHeld ? '0' : '0.9';
+  if (cross) cross.style.opacity = state.aimHeld ? '0.95' : '0';
   updateFirstPersonWeapon();
 }
 

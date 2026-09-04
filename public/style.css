@@ -657,6 +657,22 @@ body.mobile-device #mobileWeaponSwitcher {
   pointer-events: auto;
 }
 
+@media (hover: none), (pointer: coarse) {
+  #mobileWeaponSwitcher {
+    display: flex !important;
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    gap: 8px;
+    pointer-events: auto;
+  }
+}
+
+/* iPad Safari can use a desktop-sized viewport while remaining touch-first. */
+body.mobile-device #mobileWeaponSwitcher { display: flex !important; }
+
 .touch-btn:active,
 .touch-btn.active {
   background: rgba(138, 226, 255, 0.28);

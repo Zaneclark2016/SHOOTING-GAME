@@ -1079,7 +1079,10 @@ if (lobbyUsernameInput) {
 }
 
 const bots = [];
-const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+const isIPad = /iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+const isTouchDevice = isIPad
+  || window.matchMedia('(pointer: coarse)').matches
+  || window.matchMedia('(hover: none)').matches
   || 'ontouchstart' in window
   || navigator.maxTouchPoints > 0
   || window.innerWidth <= 700;

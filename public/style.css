@@ -47,6 +47,37 @@ canvas {
   text-shadow: 0 0 16px rgba(73, 236, 255, 0.7);
 }
 
+#mobileWeaponSwitcher {
+  display: none;
+}
+
+.weapon-switch-btn {
+  border: 1px solid rgba(138, 226, 255, 0.45);
+  border-radius: 10px;
+  background: rgba(9, 18, 28, 0.8);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.weapon-switch-btn.active {
+  border-color: var(--accent);
+  background: rgba(92, 244, 200, 0.22);
+  box-shadow: 0 0 12px rgba(92, 244, 200, 0.28);
+}
+
+.weapon-switch-icon {
+  display: block;
+  color: var(--gold);
+  font-size: 0.8rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
 #hud {
   display: flex;
   flex-wrap: wrap;
@@ -572,6 +603,23 @@ canvas {
   -webkit-touch-callout: none;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  #mobileWeaponSwitcher {
+    display: flex;
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  #mobileWeaponSwitcher .weapon-switch-btn {
+    min-width: 72px;
+  }
 }
 
 .touch-btn:active,

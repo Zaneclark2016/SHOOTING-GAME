@@ -829,8 +829,14 @@ function setPlayerName(name) {
       for (const id of Array.from(remotePlayers.keys())) removeRemotePlayer(id);
       currentArenaCode = null;
       if (arenaCodePopup) arenaCodePopup.style.display = 'none';
-      if (arenaActionButton) arenaActionButton.title = 'Create a new arena';
+      if (arenaActionButton) {
+        arenaActionButton.title = 'Create a new arena';
+        arenaActionButton.style.display = '';
+      }
       if (joinButton) joinButton.style.display = '';
+      if (usernameButton) usernameButton.style.display = '';
+      const deployBarEl = document.getElementById('deployBar');
+      if (deployBarEl) deployBarEl.classList.remove('hidden');
       resetToLobby();
       overlayMsg.textContent = 'You were kicked from the arena — click PLAY to rejoin';
       overlayMsg.style.display = 'block';
@@ -1239,6 +1245,8 @@ function resetPlayer() {
   player.shotgunAmmo = 8;
   player.shotgunReserve = 18;
   player.spawnProtectionTimer = 3;
+  updateWeaponSwitcher();
+  createFirstPersonWeapon();
   createSpawnForcefield();
   player.message = 'Arena live';
   state.win = false;
@@ -1259,7 +1267,14 @@ function resetToLobby() {
   player.health = 100;
   player.armor = 25;
   player.alive = true;
+  updateWeaponSwitcher();
   player.spawnProtectionTimer = 0;
+  const deployBarEl = document.getElementById('deployBar');
+  if (deployBarEl) deployBarEl.classList.remove('hidden');
+  if (usernameButton) usernameButton.style.display = '';
+  if (arenaActionButton) arenaActionButton.style.display = '';
+  if (joinButton) joinButton.style.display = '';
+  currentArenaCode = null;
   if (typeof updateSpawnForcefield === 'function') updateSpawnForcefield(0);
   player.message = 'In the lobby — press PLAY to deploy';
   updateHud();
@@ -1367,9 +1382,29 @@ function completeReload() {
 function switchWeapon() {
   if (!state.started || !player.alive || player.reloadTimer > 0) return;
   player.weapon = player.weapon === 'rifle' ? 'shotgun' : 'rifle';
+  updateWeaponSwitcher();
   player.message = `Switched to ${player.weapon === 'rifle' ? 'rifle' : 'shotgun'}`;
   updateHud();
 }
+
+function updateWeaponSwitcher() {
+  document.querySelectorAll('.weapon-switch-btn').forEach((button) => {
+    button.classList.toggle('active', button.dataset.weapon === player.weapon);
+  });
+}
+
+document.querySelectorAll('.weapon-switch-btn').forEach((button) => {
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    if (!state.started || !player.alive || player.reloadTimer > 0) return;
+    if (button.dataset.weapon === player.weapon) return;
+    player.weapon = button.dataset.weapon;
+    createFirstPersonWeapon();
+    updateWeaponSwitcher();
+    player.message = `Switched to ${player.weapon === 'rifle' ? 'rifle' : 'shotgun'}`;
+    updateHud();
+  });
+});
 
 // projectile visuals and logic
 const projectiles = [];

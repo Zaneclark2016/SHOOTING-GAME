@@ -1079,7 +1079,10 @@ if (lobbyUsernameInput) {
 }
 
 const bots = [];
-const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+  || 'ontouchstart' in window
+  || navigator.maxTouchPoints > 0
+  || window.innerWidth <= 700;
 const touchLook = { active: false, lastX: 0, lastY: 0 };
 const touchActions = {
   forward: false,
@@ -1091,8 +1094,12 @@ const touchActions = {
 };
 
 if (isTouchDevice) {
+  document.body.classList.add('mobile-device');
   mobileControls.classList.add('visible');
-  if (mobileWeaponSwitcher) mobileWeaponSwitcher.classList.add('visible');
+  if (mobileWeaponSwitcher) {
+    mobileWeaponSwitcher.classList.add('visible');
+    mobileWeaponSwitcher.style.display = 'flex';
+  }
 }
 
 // Guards against touch input getting "stuck" across a death/respawn — if the

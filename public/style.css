@@ -641,9 +641,20 @@ canvas {
 }
 
 @media (min-width: 701px) {
-  #mobileWeaponSwitcher {
+  body:not(.mobile-device) #mobileWeaponSwitcher {
     display: none !important;
   }
+}
+
+body.mobile-device #mobileWeaponSwitcher {
+  display: flex !important;
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  gap: 8px;
+  pointer-events: auto;
 }
 
 .touch-btn:active,

@@ -51,6 +51,17 @@ canvas {
   display: none;
 }
 
+#mobileWeaponSwitcher.visible {
+  display: flex;
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  gap: 8px;
+  pointer-events: auto;
+}
+
 .weapon-switch-btn {
   border: 1px solid rgba(138, 226, 255, 0.45);
   border-radius: 10px;
@@ -606,17 +617,6 @@ canvas {
 }
 
 @media (pointer: coarse) {
-  #mobileWeaponSwitcher {
-    display: flex;
-    position: fixed;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
-    gap: 8px;
-    pointer-events: auto;
-  }
-
   #mobileWeaponSwitcher .weapon-switch-btn {
     min-width: 72px;
   }

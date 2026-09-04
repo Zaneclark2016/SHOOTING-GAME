@@ -146,6 +146,7 @@ lobbyFixturePositions.forEach(([dx, dz]) => {
 const controls = new PointerLockControls(camera, document.body);
 const overlayMsg = document.getElementById('message');
 const mobileControls = document.getElementById('mobileControls');
+const mobileWeaponSwitcher = document.getElementById('mobileWeaponSwitcher');
 const joystickArea = document.getElementById('joystickArea');
 const joystickKnob = document.getElementById('joystickKnob');
 const hud = {
@@ -1091,6 +1092,7 @@ const touchActions = {
 
 if (isTouchDevice) {
   mobileControls.classList.add('visible');
+  if (mobileWeaponSwitcher) mobileWeaponSwitcher.classList.add('visible');
 }
 
 // Guards against touch input getting "stuck" across a death/respawn — if the

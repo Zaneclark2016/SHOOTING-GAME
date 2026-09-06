@@ -897,8 +897,8 @@ function setPlayerName(name) {
 
     // periodically send our state to the server
     setInterval(() => {
-      if (!socket || !socket.connected || !currentArenaCode) return;
-      socket.emit('update', {
+      if (!socket || !socket.connected) return;
+      const update = {
         x: player.position.x,
         y: player.position.y,
         z: player.position.z,
@@ -907,7 +907,9 @@ function setPlayerName(name) {
         health: player.health,
         alive: player.alive,
         name: playerName
-      });
+      };
+      if (currentArenaCode) socket.emit('update', update);
+      else if (state.mode === 'lobby' && startPage.classList.contains('hidden')) socket.emit('lobby-update', update);
     }, 100);
   } catch (err) {
     console.warn('Multiplayer init failed', err);

@@ -90,9 +90,28 @@ function broadcastAdminState() {
   io.to('__admin__').emit('players-list', flat);
 }
 
+function broadcastLobby() {
+  const players = {};
+  for (const [id, connectedSocket] of io.sockets.sockets) {
+    if (connectedSocket.data.location !== 'Lobby' || connectedSocket.data.arenaCode) continue;
+    players[id] = {
+      name: connectedSocket.data.playerName || '<UNKNOWN>',
+      x: connectedSocket.data.x ?? 0,
+      y: connectedSocket.data.y ?? 1.7,
+      z: connectedSocket.data.z ?? -300,
+      rotY: connectedSocket.data.rotY ?? 0,
+      health: 100,
+      alive: true
+    };
+  }
+  io.to('__lobby__').emit('players-list', players);
+}
+
 // Moves (or places) a socket into the given arena room, removing it from
 // whatever arena it was previously in.
 function enterArena(socket, code, name) {
+  socket.leave('__lobby__');
+  broadcastLobby();
   const prevCode = socket.data.arenaCode;
   if (prevCode && arenas[prevCode]) {
     delete arenas[prevCode].players[socket.id];
@@ -132,6 +151,13 @@ io.on('connection', (socket) => {
     if (socket.data.isAdmin || socket.data.arenaCode) return;
     socket.data.playerName = typeof data.name === 'string' ? data.name.trim().substring(0, 24) : '';
     socket.data.location = data.location === 'Lobby' ? 'Lobby' : 'Login Page';
+    if (socket.data.location === 'Lobby') socket.join('__lobby__');
+    else socket.leave('__lobby__');
+    if (typeof data.x === 'number') socket.data.x = data.x;
+    if (typeof data.y === 'number') socket.data.y = data.y;
+    if (typeof data.z === 'number') socket.data.z = data.z;
+    if (typeof data.rotY === 'number') socket.data.rotY = data.rotY;
+    broadcastLobby();
     broadcastAdminState();
   });
 
@@ -233,6 +259,15 @@ io.on('connection', (socket) => {
     broadcastArena(code);
   });
 
+  socket.on('lobby-update', (data = {}) => {
+    if (socket.data.isAdmin || socket.data.arenaCode || socket.data.location !== 'Lobby') return;
+    if (typeof data.x === 'number') socket.data.x = data.x;
+    if (typeof data.y === 'number') socket.data.y = data.y;
+    if (typeof data.z === 'number') socket.data.z = data.z;
+    if (typeof data.rotY === 'number') socket.data.rotY = data.rotY;
+    broadcastLobby();
+  });
+
   // A client fired — relay to everyone else in the same arena so they can
   // show tracers/projectiles
   socket.on('fire', (payload) => {
@@ -298,6 +333,7 @@ io.on('connection', (socket) => {
       delete arenas[code].players[socket.id];
       broadcastArena(code);
     }
+    broadcastLobby();
     broadcastAdminState();
   });
 });

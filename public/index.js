@@ -724,6 +724,7 @@ function continueFromStartPage() {
   const name = startUsernameInput.value.trim();
   if (!name) {
     startUsernameError.textContent = '⚠ Type a username ⚠';
+    if (controls.isLocked) controls.unlock();
     startUsernameInput.focus();
     return;
   }
@@ -735,6 +736,10 @@ function continueFromStartPage() {
 }
 
 if (startContinueButton) startContinueButton.addEventListener('click', continueFromStartPage);
+if (startPage) {
+  startPage.addEventListener('pointerdown', (event) => event.stopPropagation());
+  startPage.addEventListener('click', (event) => event.stopPropagation());
+}
 if (startUsernameInput) {
   startUsernameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {

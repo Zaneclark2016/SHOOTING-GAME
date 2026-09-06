@@ -159,6 +159,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const lobbySocket = io.sockets.sockets.get(targetId);
+    if (lobbySocket && !lobbySocket.data.isAdmin) {
+      lobbySocket.data.playerName = '';
+      lobbySocket.data.location = 'Login Page';
+      lobbySocket.emit('kicked-from-arena');
+      broadcastAdminState();
+      respond({ ok: true });
+      return;
+    }
+
     respond({ ok: false, error: 'Player is no longer connected' });
   });
 

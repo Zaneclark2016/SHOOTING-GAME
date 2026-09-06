@@ -878,9 +878,16 @@ function setPlayerName(name) {
       const deployBarEl = document.getElementById('deployBar');
       if (deployBarEl) deployBarEl.classList.remove('hidden');
       resetToLobby();
-      overlayMsg.textContent = 'You were kicked from the arena — click PLAY to rejoin';
-      overlayMsg.style.display = 'block';
+      setPlayerName('');
+      if (socket && socket.connected) socket.emit('player-status', { name: '', location: 'Login Page' });
+      if (startUsernameInput) startUsernameInput.value = '';
+      if (startUsernameError) startUsernameError.textContent = '⚠ You were kicked ⚠';
+      if (startPage) {
+        startPage.classList.remove('hidden');
+        startPage.setAttribute('aria-hidden', 'false');
+      }
       if (controls.isLocked) controls.unlock();
+      if (startUsernameInput) startUsernameInput.focus();
     });
 
     // periodically send our state to the server

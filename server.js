@@ -265,19 +265,30 @@ io.on('connection', (socket) => {
     io.emit('server-chat', entry);
   });
 
-  // A player sends a chat message from the game itself — scoped to their arena
+  // Arena chat stays scoped to that arena; lobby chat is visible to other
+  // lobby players and the admin dashboard.
   socket.on('chat', (text) => {
     const code = socket.data.arenaCode;
-    if (!code || !arenas[code] || typeof text !== 'string' || !text.trim()) return;
-    const name = arenas[code].players[socket.id]?.name || 'Player';
+    if (typeof text !== 'string' || !text.trim()) return;
+    const name = code
+      ? (arenas[code]?.players[socket.id]?.name || '<UNKNOWN>')
+      : (socket.data.playerName || '<UNKNOWN>');
     const entry = {
       from: name,
       text: text.trim().substring(0, 200),
       ts: Date.now(),
-      arena: code
+      arena: code || null
     };
-    io.to(code).emit('server-chat', entry);
     io.to('__admin__').emit('server-chat', entry);
+    if (code && arenas[code]) {
+      io.to(code).emit('server-chat', entry);
+      return;
+    }
+    for (const [id, connectedSocket] of io.sockets.sockets) {
+      if (!connectedSocket.data.arenaCode && !connectedSocket.data.isAdmin) {
+        connectedSocket.emit('server-chat', entry);
+      }
+    }
   });
 
   socket.on('disconnect', () => {

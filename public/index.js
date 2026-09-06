@@ -1911,7 +1911,7 @@ function triggerSlide() {
   camera.getWorldDirection(player.slideDirection);
   player.slideDirection.y = 0;
   player.slideDirection.normalize();
-  player.slideTimer = 2.5;
+  player.slideTimer = 1.5;
   player.slideBoostTimer = 0.5;
   player.slideCooldown = 0.85;
 }

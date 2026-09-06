@@ -2095,6 +2095,7 @@ overlayMsg.addEventListener('click', (event) => {
       clearBots();
       startWave();
       state.started = true;
+      updateAimState();
       overlayMsg.style.display = 'none';
       tryLockPointer();
       return;

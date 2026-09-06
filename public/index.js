@@ -173,6 +173,7 @@ const player = {
   weapon: 'rifle',
   weaponCooldown: 0,
   slideTimer: 0,
+  slideBoostTimer: 0,
   slideCooldown: 0,
   slideDirection: new THREE.Vector3(),
   reloadTimer: 0,
@@ -1311,6 +1312,9 @@ function resetPlayer() {
   player.armor = 25;
   player.weapon = 'rifle';
   player.weaponCooldown = 0;
+  player.slideTimer = 0;
+  player.slideBoostTimer = 0;
+  player.slideCooldown = 0;
   player.reloadTimer = 0;
   player.rifleAmmo = player.rifleMagazineSize;
   player.shotgunAmmo = 8;
@@ -1334,6 +1338,9 @@ function resetToLobby() {
   camera.position.copy(player.position);
   controls.getObject().position.copy(player.position);
   player.velocity.set(0, 0, 0);
+  player.slideTimer = 0;
+  player.slideBoostTimer = 0;
+  player.slideCooldown = 0;
   player.grounded = true;
   player.health = 100;
   player.armor = 25;
@@ -1864,8 +1871,10 @@ function updateMovement(dt) {
   moveVec.addScaledVector(rightVector, side);
 
   if (player.slideTimer > 0) {
-    moveVec.addScaledVector(player.slideDirection, 28 * dt);
+    const slideSpeed = player.slideBoostTimer > 0 ? 28 : 14.5;
+    moveVec.addScaledVector(player.slideDirection, slideSpeed * dt);
     player.slideTimer = Math.max(0, player.slideTimer - dt);
+    player.slideBoostTimer = Math.max(0, player.slideBoostTimer - dt);
   }
   player.slideCooldown = Math.max(0, player.slideCooldown - dt);
 
@@ -1885,8 +1894,9 @@ function updateMovement(dt) {
     player.grounded = false;
   }
 
-  camera.position.copy(player.position);
-  controls.getObject().position.copy(player.position);
+  const cameraHeight = player.slideTimer > 0 ? 0.95 : 1.7;
+  camera.position.set(player.position.x, player.position.y - (1.7 - cameraHeight), player.position.z);
+  controls.getObject().position.copy(camera.position);
 }
 
 function triggerJump() {
@@ -1901,7 +1911,8 @@ function triggerSlide() {
   camera.getWorldDirection(player.slideDirection);
   player.slideDirection.y = 0;
   player.slideDirection.normalize();
-  player.slideTimer = 0.42;
+  player.slideTimer = 2.5;
+  player.slideBoostTimer = 0.5;
   player.slideCooldown = 0.85;
 }
 

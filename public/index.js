@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const mobileRendering = navigator.maxTouchPoints > 0 || 'ontouchstart' in window || window.innerWidth <= 700;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobileRendering });
+renderer.setPixelRatio(mobileRendering ? 1 : Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = !mobileRendering;
+renderer.shadowMap.type = mobileRendering ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x666666);
@@ -21,7 +22,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 1.2);
 sun.position.set(-18, 24, -12);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(mobileRendering ? 512 : 2048, mobileRendering ? 512 : 2048);
 scene.add(sun);
 
 const worldSize = 120;
@@ -1269,6 +1270,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 function updateHud() {
+  const reloadProgress = player.reloadDuration > 0
+    ? Math.round((1 - player.reloadTimer / player.reloadDuration) * 100)
+    : 0;
+  const hudKey = `${Math.floor(player.health)}|${Math.floor(player.armor)}|${player.weapon}|${player.rifleAmmo}|${player.shotgunAmmo}|${player.shotgunReserve}|${reloadProgress}|${player.message}`;
+  if (updateHud.lastKey === hudKey) return;
+  updateHud.lastKey = hudKey;
+
   hud.health.textContent = `Health: ${Math.max(0, Math.floor(player.health))}`;
   hud.armor.textContent = `Armor: ${Math.max(0, Math.floor(player.armor))}`;
   hud.weapon.textContent = `Weapon: ${player.weapon === 'rifle' ? 'Rifle' : 'Shotgun'}`;

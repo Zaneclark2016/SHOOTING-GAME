@@ -2030,7 +2030,7 @@ document.addEventListener('mousedown', (event) => {
   if (event.button === 0) {
     if (!state.started) {
       // Ignore clicks on UI elements — let their own handlers deal with those
-      if (event.target.closest && (event.target.closest('#deployBar') || event.target.closest('#usernameButton') || event.target.closest('#usernameModal') || event.target.closest('#gameChatInputWrap') || event.target.closest('#arenaCorner') || event.target.closest('#arenaCodePopup') || event.target.closest('#joinCodeModal'))) {
+      if (event.target.closest && (event.target.closest('#startPage') || event.target.closest('#deployBar') || event.target.closest('#usernameButton') || event.target.closest('#usernameModal') || event.target.closest('#gameChatInputWrap') || event.target.closest('#arenaCorner') || event.target.closest('#arenaCodePopup') || event.target.closest('#joinCodeModal'))) {
         return;
       }
       // In the lobby, clicking the 3D scene just engages pointer lock so the

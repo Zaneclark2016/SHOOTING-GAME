@@ -273,9 +273,11 @@ io.on('connection', (socket) => {
     const entry = {
       from: name,
       text: text.trim().substring(0, 200),
-      ts: Date.now()
+      ts: Date.now(),
+      arena: code
     };
     io.to(code).emit('server-chat', entry);
+    io.to('__admin__').emit('server-chat', entry);
   });
 
   socket.on('disconnect', () => {

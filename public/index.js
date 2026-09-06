@@ -199,10 +199,10 @@ const state = {
 
 let audioContext = null;
 let shotNoiseBuffer = null;
-const rifleShotAudio = new Audio('/audio/rifle-shot.mp3');
-const shotgunShotAudio = new Audio('/audio/shotgun-shot.mp3');
-const shotgunReloadAudio = new Audio('/audio/shotgun-reload.mp3');
-const rifleReloadAudio = new Audio('/audio/rifle-reload.mp3');
+const rifleShotAudio = new Audio(window.embeddedAudioData.rifleShot);
+const shotgunShotAudio = new Audio(window.embeddedAudioData.shotgunShot);
+const shotgunReloadAudio = new Audio(window.embeddedAudioData.shotgunReload);
+const rifleReloadAudio = new Audio(window.embeddedAudioData.rifleReload);
 const activeRifleShots = new Set();
 rifleShotAudio.preload = 'auto';
 shotgunShotAudio.preload = 'auto';

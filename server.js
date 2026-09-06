@@ -79,11 +79,12 @@ function broadcastAdminState() {
   }
   for (const [id, connectedSocket] of io.sockets.sockets) {
     if (connectedSocket.data.isAdmin || connectedSocket.data.arenaCode) continue;
+    const location = connectedSocket.data.location || 'Login Page';
     flat[id] = {
-      name: connectedSocket.data.playerName || 'Player',
+      name: location === 'Login Page' ? '<UNKNOWN>' : (connectedSocket.data.playerName || '<UNKNOWN>'),
       health: '?',
       alive: true,
-      location: connectedSocket.data.location || 'Login Page'
+      location
     };
   }
   io.to('__admin__').emit('players-list', flat);

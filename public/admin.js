@@ -30,7 +30,7 @@ socket.on('players-list', (players) => {
   playersEl.innerHTML = ids
     .map((id) => {
       const p = players[id];
-      const name = p.name || 'Unknown';
+      const name = p.location === 'Login Page' ? '<UNKNOWN>' : (p.name || '<UNKNOWN>');
       const health = p.health ?? '?';
       const alive = p.alive === false ? ' (dead)' : '';
       const location = p.arena

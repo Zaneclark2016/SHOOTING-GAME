@@ -600,6 +600,33 @@ canvas {
   pointer-events: none;
 }
 
+#mobileLayoutButton {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid rgba(138, 226, 255, 0.7);
+  border-radius: 50%;
+  background: rgba(11, 18, 30, 0.8);
+  color: var(--text);
+  font-size: 1.35rem;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+#mobileControls.layout-editing .touch-pad,
+#mobileControls.layout-editing .touch-actions {
+  outline: 2px dashed var(--accent);
+  outline-offset: 5px;
+}
+
+#mobileControls.layout-editing .touch-pad,
+#mobileControls.layout-editing .touch-btn {
+  cursor: move;
+}
+
 #mobileControls.visible {
   display: flex;
 }

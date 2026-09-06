@@ -2024,8 +2024,70 @@ function resetJoystick() {
 function bindTouchControls() {
   const joystickArea = document.getElementById('joystickArea');
   const joystickKnob = document.getElementById('joystickKnob');
+  const mobileControls = document.getElementById('mobileControls');
+  const layoutButton = document.getElementById('mobileLayoutButton');
 
   if (!joystickArea || !joystickKnob) return;
+
+  let layoutEditing = false;
+  layoutButton?.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    layoutEditing = !layoutEditing;
+    mobileControls.classList.toggle('layout-editing', layoutEditing);
+    layoutButton.classList.toggle('active', layoutEditing);
+    layoutButton.setAttribute('aria-pressed', String(layoutEditing));
+  });
+
+  const draggableControls = [joystickArea, ...document.querySelectorAll('.touch-btn')];
+  draggableControls.forEach((control) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`rival-control-${control.id}`) || 'null');
+      if (saved && typeof saved.left === 'string' && typeof saved.top === 'string') {
+        control.style.position = 'fixed';
+        control.style.left = saved.left;
+        control.style.top = saved.top;
+        control.style.right = 'auto';
+        control.style.bottom = 'auto';
+      }
+    } catch (error) {
+      console.warn('[controls] saved layout could not be loaded:', error);
+    }
+    control.addEventListener('pointerdown', (event) => {
+      if (!layoutEditing) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      control.setPointerCapture(event.pointerId);
+      const rect = control.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      control.style.position = 'fixed';
+      control.style.left = `${rect.left}px`;
+      control.style.top = `${rect.top}px`;
+      control.style.right = 'auto';
+      control.style.bottom = 'auto';
+
+      const move = (moveEvent) => {
+        const left = Math.max(0, Math.min(window.innerWidth - rect.width, moveEvent.clientX - offsetX));
+        const top = Math.max(0, Math.min(window.innerHeight - rect.height, moveEvent.clientY - offsetY));
+        control.style.left = `${left}px`;
+        control.style.top = `${top}px`;
+      };
+      const finish = () => {
+        control.releasePointerCapture?.(event.pointerId);
+        control.removeEventListener('pointermove', move);
+        control.removeEventListener('pointerup', finish);
+        control.removeEventListener('pointercancel', finish);
+        localStorage.setItem(`rival-control-${control.id}`, JSON.stringify({
+          left: control.style.left,
+          top: control.style.top
+        }));
+      };
+      control.addEventListener('pointermove', move);
+      control.addEventListener('pointerup', finish);
+      control.addEventListener('pointercancel', finish);
+    });
+  });
 
   joystickArea.addEventListener('pointerdown', (event) => {
     event.preventDefault();

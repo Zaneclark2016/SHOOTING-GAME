@@ -602,10 +602,35 @@ function createRemotePlayer(id, data = {}) {
     data,
     legs: { left: lLegPivot, right: rLegPivot },
     forcefield,
+    parts: { torso, head, lArm, rArm, leftLeg: lLegPivot, rightLeg: rLegPivot },
+    ragdolled: false,
     lastPos: new THREE.Vector2(group.position.x, group.position.z),
     walkPhase: 0,
     isWalking: false
   });
+  updateRemoteRagdoll(remotePlayers.get(id), data.alive === false);
+}
+
+function updateRemoteRagdoll(remotePlayer, ragdolled) {
+  if (!remotePlayer) return;
+  if (remotePlayer.ragdolled === ragdolled && !ragdolled) return;
+  remotePlayer.ragdolled = ragdolled;
+  const { mesh, parts } = remotePlayer;
+  if (ragdolled) {
+    mesh.position.y = MODEL_GROUND_OFFSET + 0.12;
+    mesh.rotation.z = -Math.PI / 2;
+    parts.head.position.y = 1.7;
+    parts.lArm.rotation.z = -0.7;
+    parts.rArm.rotation.z = 0.7;
+    parts.leftLeg.rotation.z = 0.25;
+    parts.rightLeg.rotation.z = -0.25;
+  } else {
+    mesh.rotation.set(0, 0, 0);
+    parts.lArm.rotation.set(0, 0, 0);
+    parts.rArm.rotation.set(0, 0, 0);
+    parts.leftLeg.rotation.set(0, 0, 0);
+    parts.rightLeg.rotation.set(0, 0, 0);
+  }
 }
 
 // Remote player meshes are grounded at the feet (see EYE_HEIGHT/MODEL_GROUND_OFFSET
@@ -640,6 +665,7 @@ function updateRemotePlayer(id, data = {}) {
   }
   if (data.health !== undefined) p.mesh.userData.health = data.health;
   if (data.alive !== undefined) p.mesh.userData.alive = data.alive;
+  if (data.alive !== undefined) updateRemoteRagdoll(p, data.alive === false);
   if (data.spawnProtectionUntil !== undefined) {
     p.mesh.userData.spawnProtectionUntil = data.spawnProtectionUntil;
   }

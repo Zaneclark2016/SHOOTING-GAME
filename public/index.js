@@ -1924,6 +1924,7 @@ function handleKey(e, isDown) {
       }
     }
     if (e.code === 'Space') triggerJump();
+    if (e.code === 'KeyC') triggerSlide();
     if (e.code === 'KeyT' && document.activeElement?.tagName !== 'INPUT') toggleDebugWalker();
   }
 

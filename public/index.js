@@ -1871,6 +1871,12 @@ function updateMovement(dt) {
   moveVec.addScaledVector(rightVector, side);
 
   if (player.slideTimer > 0) {
+    if (moveVec.lengthSq() === 0) {
+      player.slideTimer = 0;
+      player.slideBoostTimer = 0;
+    }
+  }
+  if (player.slideTimer > 0) {
     const slideSpeed = player.slideBoostTimer > 0 ? 28 : 14.5;
     moveVec.addScaledVector(player.slideDirection, slideSpeed * dt);
     player.slideTimer = Math.max(0, player.slideTimer - dt);

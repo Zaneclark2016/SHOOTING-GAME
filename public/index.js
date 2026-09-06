@@ -172,6 +172,9 @@ const player = {
   timer: 90,
   weapon: 'rifle',
   weaponCooldown: 0,
+  slideTimer: 0,
+  slideCooldown: 0,
+  slideDirection: new THREE.Vector3(),
   reloadTimer: 0,
   rifleAmmo: 35,
   rifleMagazineSize: 35,
@@ -1147,6 +1150,7 @@ const touchActions = {
   left: false,
   right: false,
   jump: false,
+  slide: false,
   fire: false
 };
 
@@ -1173,6 +1177,7 @@ function resetInputState() {
   touchActions.left = false;
   touchActions.right = false;
   touchActions.jump = false;
+  touchActions.slide = false;
   touchActions.fire = false;
   touchLook.active = false;
   state.fireHeld = false;
@@ -1858,6 +1863,12 @@ function updateMovement(dt) {
   moveVec.addScaledVector(worldForward, forward);
   moveVec.addScaledVector(rightVector, side);
 
+  if (player.slideTimer > 0) {
+    moveVec.addScaledVector(player.slideDirection, 28 * dt);
+    player.slideTimer = Math.max(0, player.slideTimer - dt);
+  }
+  player.slideCooldown = Math.max(0, player.slideCooldown - dt);
+
   if (moveVec.lengthSq() > 0) {
     moveVec.normalize().multiplyScalar(14.5 * dt);
   }
@@ -1883,6 +1894,15 @@ function triggerJump() {
     player.velocity.y = 8.5;
     player.grounded = false;
   }
+}
+
+function triggerSlide() {
+  if (!state.started || !player.alive || !player.grounded || player.slideCooldown > 0) return;
+  camera.getWorldDirection(player.slideDirection);
+  player.slideDirection.y = 0;
+  player.slideDirection.normalize();
+  player.slideTimer = 0.42;
+  player.slideCooldown = 0.85;
 }
 
 function handleKey(e, isDown) {
@@ -1981,6 +2001,17 @@ function bindTouchControls() {
     });
     jumpButton.addEventListener('pointerup', () => jumpButton.classList.remove('active'));
     jumpButton.addEventListener('pointerleave', () => jumpButton.classList.remove('active'));
+  }
+
+  const slideButton = document.querySelector('[data-action="slide"]');
+  if (slideButton) {
+    slideButton.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      triggerSlide();
+      slideButton.classList.add('active');
+    });
+    slideButton.addEventListener('pointerup', () => slideButton.classList.remove('active'));
+    slideButton.addEventListener('pointerleave', () => slideButton.classList.remove('active'));
   }
 
   const fireButton = document.querySelector('[data-action="fire"]');

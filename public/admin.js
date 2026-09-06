@@ -41,6 +41,7 @@ socket.on('players-list', (players) => {
 });
 
 playersEl.addEventListener('click', (event) => {
+  event.preventDefault();
   const button = event.target.closest('.kick-btn');
   if (!button || pendingKickIds.has(button.dataset.playerId)) return;
 

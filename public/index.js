@@ -720,6 +720,17 @@ const startUsernameInput = document.getElementById('startUsernameInput');
 const startContinueButton = document.getElementById('startContinueButton');
 const startUsernameError = document.getElementById('startUsernameError');
 
+function showLoginPage(message = '') {
+  if (!startPage) return;
+  startPage.classList.remove('hidden');
+  startPage.setAttribute('aria-hidden', 'false');
+  if (startUsernameInput) {
+    startUsernameInput.value = '';
+    startUsernameInput.focus();
+  }
+  if (startUsernameError) startUsernameError.textContent = message;
+}
+
 function continueFromStartPage() {
   const name = startUsernameInput.value.trim();
   if (!name) {
@@ -880,14 +891,8 @@ function setPlayerName(name) {
       resetToLobby();
       setPlayerName('');
       if (socket && socket.connected) socket.emit('player-status', { name: '', location: 'Login Page' });
-      if (startUsernameInput) startUsernameInput.value = '';
-      if (startUsernameError) startUsernameError.textContent = '⚠ You were kicked ⚠';
-      if (startPage) {
-        startPage.classList.remove('hidden');
-        startPage.setAttribute('aria-hidden', 'false');
-      }
+      showLoginPage('⚠ You were kicked ⚠');
       if (controls.isLocked) controls.unlock();
-      if (startUsernameInput) startUsernameInput.focus();
     });
 
     // periodically send our state to the server

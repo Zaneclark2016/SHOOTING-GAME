@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="startPage" role="dialog" aria-labelledby="startPageTitle">
+    <div class="start-card">
+      <div id="startPageTitle" class="start-title">Rival Surge</div>
+      <label for="startUsernameInput">Username</label>
+      <input id="startUsernameInput" type="text" maxlength="24" autocomplete="off" placeholder="Enter your username" />
+      <button id="startContinueButton" type="button">Continue</button>
+      <div id="startUsernameError" class="start-error" role="alert" aria-live="polite"></div>
+    </div>
+  </div>
   <div id="overlay">
     <div id="connectionBanner" style="display:none;"></div>
     <div id="arenaCorner">

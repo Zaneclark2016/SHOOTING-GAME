@@ -715,6 +715,36 @@ let playerName = localStorage.getItem('rival_username') || '';
 const lobbyUsernameInput = document.getElementById('lobbyUsernameInput');
 if (lobbyUsernameInput) lobbyUsernameInput.value = playerName;
 
+const startPage = document.getElementById('startPage');
+const startUsernameInput = document.getElementById('startUsernameInput');
+const startContinueButton = document.getElementById('startContinueButton');
+const startUsernameError = document.getElementById('startUsernameError');
+
+function continueFromStartPage() {
+  const name = startUsernameInput.value.trim();
+  if (!name) {
+    startUsernameError.textContent = '⚠ Type a username ⚠';
+    startUsernameInput.focus();
+    return;
+  }
+
+  setPlayerName(name);
+  startUsernameError.textContent = '';
+  startPage.classList.add('hidden');
+  startPage.setAttribute('aria-hidden', 'true');
+}
+
+if (startContinueButton) startContinueButton.addEventListener('click', continueFromStartPage);
+if (startUsernameInput) {
+  startUsernameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      continueFromStartPage();
+    }
+  });
+  startUsernameInput.focus();
+}
+
 function setPlayerName(name) {
   playerName = String(name || '').trim().substring(0, 24);
   if (!playerName) playerName = '';

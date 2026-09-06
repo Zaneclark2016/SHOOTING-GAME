@@ -465,7 +465,8 @@ function updateFirstPersonWeapon() {
 function updateAimState() {
   camera.fov = 75;
   camera.updateProjectionMatrix();
-  if (cross) cross.style.opacity = state.aimHeld ? '0.95' : '0.95';
+  if (cross) cross.style.opacity = state.started && player.alive ? '0.95' : '0';
+  if (weaponIconEl) weaponIconEl.style.display = state.started && player.alive ? '' : 'none';
   updateFirstPersonWeapon();
 }
 
@@ -1343,6 +1344,7 @@ function resetToLobby() {
   if (socket && socket.connected) socket.emit('player-status', { name: playerName, location: 'Lobby' });
   if (typeof updateSpawnForcefield === 'function') updateSpawnForcefield(0);
   player.message = 'In the lobby — press PLAY to deploy';
+  updateAimState();
   updateHud();
 }
 
@@ -1390,6 +1392,7 @@ function startGame() {
   clearBots();
   startWave();
   state.started = true;
+  updateAimState();
   overlayMsg.style.display = 'none';
   const deployBarEl = document.getElementById('deployBar');
   if (deployBarEl) deployBarEl.classList.add('hidden');

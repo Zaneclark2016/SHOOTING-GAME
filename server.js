@@ -117,8 +117,12 @@ io.on('connection', (socket) => {
     broadcastAdminState();
   });
 
-  socket.on('admin-kick-player', (targetId) => {
-    if (typeof targetId !== 'string') return;
+  socket.on('admin-kick-player', (targetId, callback) => {
+    const respond = typeof callback === 'function' ? callback : () => {};
+    if (typeof targetId !== 'string') {
+      respond({ ok: false, error: 'Invalid player id' });
+      return;
+    }
 
     for (const code of Object.keys(arenas)) {
       const target = arenas[code].players[targetId];
@@ -133,8 +137,11 @@ io.on('connection', (socket) => {
       }
       broadcastArena(code);
       broadcastAdminState();
+      respond({ ok: true });
       return;
     }
+
+    respond({ ok: false, error: 'Player is no longer connected' });
   });
 
   // Create a brand-new arena with a fresh, unused join code and deploy

@@ -14,6 +14,7 @@ const playersEl = document.getElementById('players');
 const chatEl = document.getElementById('chat');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
+const pendingKickIds = new Set();
 
 // -------------------------------
 // PLAYERS LIST
@@ -37,10 +38,24 @@ socket.on('players-list', (players) => {
     })
     .join('');
 
-  playersEl.querySelectorAll('.kick-btn').forEach((button) => {
-    button.addEventListener('click', () => {
-      socket.emit('admin-kick-player', button.dataset.playerId);
-    });
+});
+
+playersEl.addEventListener('click', (event) => {
+  const button = event.target.closest('.kick-btn');
+  if (!button || pendingKickIds.has(button.dataset.playerId)) return;
+
+  const playerId = button.dataset.playerId;
+  pendingKickIds.add(playerId);
+  button.disabled = true;
+  button.textContent = 'Kicking...';
+
+  socket.emit('admin-kick-player', playerId, (result) => {
+    pendingKickIds.delete(playerId);
+    if (!result?.ok) {
+      button.disabled = false;
+      button.textContent = 'Kick';
+      console.warn('[admin] kick failed:', result?.error || 'player not found');
+    }
   });
 });
 

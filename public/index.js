@@ -451,7 +451,9 @@ function updateFirstPersonWeapon() {
     firstPersonWeapon.position.copy(basePosition);
     firstPersonWeapon.rotation.copy(baseRotation);
     if (state.aimHeld) {
-      firstPersonWeapon.position.x -= 0.34;
+      // Center the rear sight on the fixed crosshair so the weapon does not
+      // obscure the actual aim point from the left side.
+      firstPersonWeapon.position.x -= 0.42;
       firstPersonWeapon.position.y += 0.16;
       firstPersonWeapon.position.z += 0.2;
       firstPersonWeapon.rotation.y *= 0.2;

@@ -730,6 +730,7 @@ function continueFromStartPage() {
   }
 
   setPlayerName(name);
+  if (socket && socket.connected) socket.emit('player-status', { name: playerName, location: 'Lobby' });
   startUsernameError.textContent = '';
   startPage.classList.add('hidden');
   startPage.setAttribute('aria-hidden', 'true');
@@ -772,6 +773,7 @@ function setPlayerName(name) {
 
     socket.on('connect', () => {
       console.log('Connected to multiplayer server', socket.id);
+      socket.emit('player-status', { name: playerName, location: 'Login Page' });
       if (connectionBanner) connectionBanner.style.display = 'none';
       if (hasConnectedBefore && currentArenaCode) {
         // This is a reconnect after a dropped connection (common over an
@@ -1324,6 +1326,7 @@ function resetToLobby() {
   if (arenaActionButton) arenaActionButton.style.display = '';
   if (joinButton) joinButton.style.display = '';
   currentArenaCode = null;
+  if (socket && socket.connected) socket.emit('player-status', { name: playerName, location: 'Lobby' });
   if (typeof updateSpawnForcefield === 'function') updateSpawnForcefield(0);
   player.message = 'In the lobby — press PLAY to deploy';
   updateHud();

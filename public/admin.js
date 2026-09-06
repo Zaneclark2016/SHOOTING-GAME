@@ -33,7 +33,10 @@ socket.on('players-list', (players) => {
       const name = p.name || 'Unknown';
       const health = p.health ?? '?';
       const alive = p.alive === false ? ' (dead)' : '';
-      const arena = p.arena ? ` — Arena: ${escapeHtml(p.arena)}` : '';
+      const location = p.arena
+        ? `Arena: ${escapeHtml(p.arena)}`
+        : escapeHtml(p.location || 'Lobby');
+      const arena = ` — ${location}`;
       return `<div class="player"><div>${escapeHtml(name)} — HP: ${escapeHtml(String(health))}${alive}${arena}</div><button class="kick-btn" data-player-id="${escapeHtml(id)}">Kick</button></div>`;
     })
     .join('');

@@ -77,6 +77,15 @@ function broadcastAdminState() {
       flat[id] = Object.assign({}, p, { arena: code });
     }
   }
+  for (const [id, connectedSocket] of io.sockets.sockets) {
+    if (connectedSocket.data.isAdmin || connectedSocket.data.arenaCode) continue;
+    flat[id] = {
+      name: connectedSocket.data.playerName || 'Player',
+      health: '?',
+      alive: true,
+      location: connectedSocket.data.location || 'Login Page'
+    };
+  }
   io.to('__admin__').emit('players-list', flat);
 }
 
@@ -113,7 +122,15 @@ io.on('connection', (socket) => {
 
   // Admin page subscribes to the aggregated cross-arena roster.
   socket.on('admin-subscribe', () => {
+    socket.data.isAdmin = true;
     socket.join('__admin__');
+    broadcastAdminState();
+  });
+
+  socket.on('player-status', (data = {}) => {
+    if (socket.data.isAdmin || socket.data.arenaCode) return;
+    socket.data.playerName = typeof data.name === 'string' ? data.name.trim().substring(0, 24) : '';
+    socket.data.location = data.location === 'Lobby' ? 'Lobby' : 'Login Page';
     broadcastAdminState();
   });
 
@@ -133,6 +150,7 @@ io.on('connection', (socket) => {
       if (targetSocket) {
         targetSocket.leave(code);
         targetSocket.data.arenaCode = null;
+        targetSocket.data.location = 'Lobby';
         targetSocket.emit('kicked-from-arena');
       }
       broadcastArena(code);
@@ -255,8 +273,8 @@ io.on('connection', (socket) => {
     if (code && arenas[code] && arenas[code].players[socket.id]) {
       delete arenas[code].players[socket.id];
       broadcastArena(code);
-      broadcastAdminState();
     }
+    broadcastAdminState();
   });
 });
 

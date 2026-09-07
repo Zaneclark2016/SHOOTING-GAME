@@ -13,9 +13,20 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Admin access is protected by a server-side password.
+// Set ADMIN_PASSWORD in your hosting environment before starting the server.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+
+if (!ADMIN_PASSWORD) {
+  console.warn(
+    'WARNING: ADMIN_PASSWORD is not set. The admin dashboard is disabled.'
+  );
+}
+
 // -------------------------------
 // GAME STATE
 // -------------------------------
+
 // arenas[code] = { players: {} }
 // Each arena is its own Socket.IO "room" (the room name is just the code),
 // so events emitted with io.to(code) only reach clients deployed into that
@@ -55,6 +66,7 @@ function makePlayerEntry(name) {
 
 function broadcastArena(code) {
   if (!arenas[code]) return;
+
   const players = Object.fromEntries(
     Object.entries(arenas[code].players).map(([id, player]) => [
       id,
@@ -63,6 +75,7 @@ function broadcastArena(code) {
       })
     ])
   );
+
   io.to(code).emit('players-list', players);
   broadcastAdminState();
 }
@@ -72,28 +85,42 @@ function broadcastArena(code) {
 // working even though regular players only ever see their own arena.
 function broadcastAdminState() {
   const flat = {};
+
   for (const code of Object.keys(arenas)) {
     for (const [id, p] of Object.entries(arenas[code].players)) {
       flat[id] = Object.assign({}, p, { arena: code });
     }
   }
+
   for (const [id, connectedSocket] of io.sockets.sockets) {
     if (connectedSocket.data.isAdmin || connectedSocket.data.arenaCode) continue;
+
     const location = connectedSocket.data.location || 'Login Page';
+
     flat[id] = {
-      name: location === 'Login Page' ? '<UNKNOWN>' : (connectedSocket.data.playerName || '<UNKNOWN>'),
+      name: location === 'Login Page'
+        ? '<UNKNOWN>'
+        : (connectedSocket.data.playerName || '<UNKNOWN>'),
       health: '?',
       alive: true,
       location
     };
   }
+
   io.to('__admin__').emit('players-list', flat);
 }
 
 function broadcastLobby() {
   const players = {};
+
   for (const [id, connectedSocket] of io.sockets.sockets) {
-    if (connectedSocket.data.location !== 'Lobby' || connectedSocket.data.arenaCode) continue;
+    if (
+      connectedSocket.data.location !== 'Lobby' ||
+      connectedSocket.data.arenaCode
+    ) {
+      continue;
+    }
+
     players[id] = {
       name: connectedSocket.data.playerName || '<UNKNOWN>',
       x: connectedSocket.data.x ?? 0,
@@ -104,6 +131,7 @@ function broadcastLobby() {
       alive: true
     };
   }
+
   io.to('__lobby__').emit('players-list', players);
 }
 
@@ -112,7 +140,9 @@ function broadcastLobby() {
 function enterArena(socket, code, name) {
   socket.leave('__lobby__');
   broadcastLobby();
+
   const prevCode = socket.data.arenaCode;
+
   if (prevCode && arenas[prevCode]) {
     delete arenas[prevCode].players[socket.id];
     socket.leave(prevCode);
@@ -121,82 +151,158 @@ function enterArena(socket, code, name) {
 
   socket.data.arenaCode = code;
   socket.join(code);
+
   arenas[code].players[socket.id] = makePlayerEntry(name);
 
-  socket.emit('init-players', Object.fromEntries(
-    Object.entries(arenas[code].players).map(([id, player]) => [
-      id,
-      Object.assign({}, player, {
-        spawnProtected: player.spawnProtectionUntil > Date.now()
-      })
-    ])
-  ));
+  socket.emit(
+    'init-players',
+    Object.fromEntries(
+      Object.entries(arenas[code].players).map(([id, player]) => [
+        id,
+        Object.assign({}, player, {
+          spawnProtected: player.spawnProtectionUntil > Date.now()
+        })
+      ])
+    )
+  );
+
   broadcastArena(code);
 }
 
 // -------------------------------
 // SOCKET.IO EVENTS
 // -------------------------------
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  // Admin page subscribes to the aggregated cross-arena roster.
-  socket.on('admin-subscribe', () => {
+  // Admin authentication.
+  socket.on('admin-auth', (password, callback) => {
+    const respond =
+      typeof callback === 'function' ? callback : () => {};
+
+    if (!ADMIN_PASSWORD) {
+      respond({
+        ok: false,
+        error: 'Admin access is not configured on the server.'
+      });
+      return;
+    }
+
+    if (
+      typeof password !== 'string' ||
+      password !== ADMIN_PASSWORD
+    ) {
+      socket.data.isAdmin = false;
+      socket.leave('__admin__');
+
+      respond({
+        ok: false,
+        error: 'Incorrect admin password.'
+      });
+
+      return;
+    }
+
     socket.data.isAdmin = true;
     socket.join('__admin__');
+
+    respond({ ok: true });
+
     broadcastAdminState();
   });
 
   socket.on('player-status', (data = {}) => {
     if (socket.data.isAdmin || socket.data.arenaCode) return;
-    socket.data.playerName = typeof data.name === 'string' ? data.name.trim().substring(0, 24) : '';
-    socket.data.location = data.location === 'Lobby' ? 'Lobby' : 'Login Page';
-    if (socket.data.location === 'Lobby') socket.join('__lobby__');
-    else socket.leave('__lobby__');
+
+    socket.data.playerName =
+      typeof data.name === 'string'
+        ? data.name.trim().substring(0, 24)
+        : '';
+
+    socket.data.location =
+      data.location === 'Lobby'
+        ? 'Lobby'
+        : 'Login Page';
+
+    if (socket.data.location === 'Lobby') {
+      socket.join('__lobby__');
+    } else {
+      socket.leave('__lobby__');
+    }
+
     if (typeof data.x === 'number') socket.data.x = data.x;
     if (typeof data.y === 'number') socket.data.y = data.y;
     if (typeof data.z === 'number') socket.data.z = data.z;
     if (typeof data.rotY === 'number') socket.data.rotY = data.rotY;
+
     broadcastLobby();
     broadcastAdminState();
   });
 
   socket.on('admin-kick-player', (targetId, callback) => {
-    const respond = typeof callback === 'function' ? callback : () => {};
+    const respond =
+      typeof callback === 'function' ? callback : () => {};
+
+    // SECURITY CHECK:
+    // Only authenticated admins can kick players.
+    if (!socket.data.isAdmin) {
+      respond({
+        ok: false,
+        error: 'Unauthorized'
+      });
+      return;
+    }
+
     if (typeof targetId !== 'string') {
-      respond({ ok: false, error: 'Invalid player id' });
+      respond({
+        ok: false,
+        error: 'Invalid player id'
+      });
       return;
     }
 
     for (const code of Object.keys(arenas)) {
       const target = arenas[code].players[targetId];
+
       if (!target) continue;
 
       const targetSocket = io.sockets.sockets.get(targetId);
+
       delete arenas[code].players[targetId];
+
       if (targetSocket) {
         targetSocket.leave(code);
         targetSocket.data.arenaCode = null;
         targetSocket.data.location = 'Lobby';
         targetSocket.emit('kicked-from-arena');
       }
+
       broadcastArena(code);
       broadcastAdminState();
+
       respond({ ok: true });
       return;
     }
 
     const lobbySocket = io.sockets.sockets.get(targetId);
+
     if (lobbySocket && !lobbySocket.data.isAdmin) {
       lobbySocket.data.playerName = '';
       lobbySocket.data.location = 'Login Page';
+
       lobbySocket.emit('kicked-from-arena');
+
       broadcastAdminState();
+
       respond({ ok: true });
       return;
     }
 
-    respond({ ok: false, error: 'Player is no longer connected' });
+    respond({
+      ok: false,
+      error: 'Player is no longer connected'
+    });
   });
 
   // Create a brand-new arena with a fresh, unused join code and deploy
@@ -204,24 +310,57 @@ io.on('connection', (socket) => {
   socket.on('create-arena', (data, cb) => {
     const name = data && data.name;
     const code = generateJoinCode();
+
     arenas[code] = { players: {} };
+
     enterArena(socket, code, name);
-    console.log(`Arena ${code} created by ${socket.id} (${name || 'Player'})`);
-    if (typeof cb === 'function') cb({ ok: true, code });
+
+    console.log(
+      `Arena ${code} created by ${socket.id} (${name || 'Player'})`
+    );
+
+    if (typeof cb === 'function') {
+      cb({ ok: true, code });
+    }
   });
 
   // Join a specific arena by its code.
   socket.on('join-arena', (data, cb) => {
-    const code = String((data && data.code) || '').trim().toUpperCase();
+    const code = String(
+      (data && data.code) || ''
+    )
+      .trim()
+      .toUpperCase();
+
     const name = data && data.name;
+
     if (!code || !arenas[code]) {
-      console.log(`Join attempt failed — code "${code}" not found. Known codes: [${Object.keys(arenas).join(', ')}]`);
-      if (typeof cb === 'function') cb({ ok: false, error: 'That join code doesn\'t exist.' });
+      console.log(
+        `Join attempt failed — code "${code}" not found. Known codes: [${Object.keys(arenas).join(', ')}]`
+      );
+
+      if (typeof cb === 'function') {
+        cb({
+          ok: false,
+          error: 'That join code doesn\'t exist.'
+        });
+      }
+
       return;
     }
+
     enterArena(socket, code, name);
-    console.log(`${socket.id} (${name || 'Player'}) joined arena ${code} — now ${Object.keys(arenas[code].players).length} player(s)`);
-    if (typeof cb === 'function') cb({ ok: true, code });
+
+    console.log(
+      `${socket.id} (${name || 'Player'}) joined arena ${code} — now ${Object.keys(arenas[code].players).length} player(s)`
+    );
+
+    if (typeof cb === 'function') {
+      cb({
+        ok: true,
+        code
+      });
+    }
   });
 
   // Matchmake into a random existing arena. If there are none yet, make one.
@@ -229,74 +368,154 @@ io.on('connection', (socket) => {
   socket.on('join-random-arena', (data, cb) => {
     const name = data && data.name;
     const codes = Object.keys(arenas);
+
     let code;
+
     if (codes.length === 0) {
       code = generateJoinCode();
       arenas[code] = { players: {} };
     } else {
       code = codes[Math.floor(Math.random() * codes.length)];
     }
+
     enterArena(socket, code, name);
-    if (typeof cb === 'function') cb({ ok: true, code });
+
+    if (typeof cb === 'function') {
+      cb({
+        ok: true,
+        code
+      });
+    }
   });
 
   socket.on('respawn', () => {
     const code = socket.data.arenaCode;
-    const player = code && arenas[code] && arenas[code].players[socket.id];
+    const player =
+      code &&
+      arenas[code] &&
+      arenas[code].players[socket.id];
+
     if (!player || player.alive) return;
+
     player.health = 100;
     player.alive = true;
-    player.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
+    player.spawnProtectionUntil =
+      Date.now() + SPAWN_PROTECTION_MS;
+
     broadcastArena(code);
   });
 
   // Index.js sends this ~10x/sec with position, rotation, weapon, health, alive
   socket.on('update', (data) => {
     const code = socket.data.arenaCode;
-    if (!code || !arenas[code] || !arenas[code].players[socket.id]) return;
-    const { spawnProtectionUntil, ...playerUpdate } = data || {};
-    Object.assign(arenas[code].players[socket.id], playerUpdate);
+
+    if (
+      !code ||
+      !arenas[code] ||
+      !arenas[code].players[socket.id]
+    ) {
+      return;
+    }
+
+    const {
+      spawnProtectionUntil,
+      ...playerUpdate
+    } = data || {};
+
+    Object.assign(
+      arenas[code].players[socket.id],
+      playerUpdate
+    );
+
     broadcastArena(code);
   });
 
   socket.on('lobby-update', (data = {}) => {
-    if (socket.data.isAdmin || socket.data.arenaCode || socket.data.location !== 'Lobby') return;
+    if (
+      socket.data.isAdmin ||
+      socket.data.arenaCode ||
+      socket.data.location !== 'Lobby'
+    ) {
+      return;
+    }
+
     if (typeof data.x === 'number') socket.data.x = data.x;
     if (typeof data.y === 'number') socket.data.y = data.y;
     if (typeof data.z === 'number') socket.data.z = data.z;
     if (typeof data.rotY === 'number') socket.data.rotY = data.rotY;
+
     broadcastLobby();
   });
 
   // A client fired — relay to everyone else in the same arena so they can
-  // show tracers/projectiles
+  // show tracers/projectiles.
   socket.on('fire', (payload) => {
     const code = socket.data.arenaCode;
+
     if (!code) return;
-    socket.to(code).emit('player-fired', socket.id, payload);
+
+    socket.to(code).emit(
+      'player-fired',
+      socket.id,
+      payload
+    );
   });
 
-  // A client reports it hit another player — tell that player they took damage
+  // A client reports it hit another player — tell that player they took damage.
   socket.on('hit', ({ targetId, damage } = {}) => {
     const code = socket.data.arenaCode;
-    if (!code || !arenas[code] || !targetId || typeof damage !== 'number') return;
+
+    if (
+      !code ||
+      !arenas[code] ||
+      !targetId ||
+      typeof damage !== 'number'
+    ) {
+      return;
+    }
+
     const target = arenas[code].players[targetId];
-    if (!target) return; // target must be in the same arena
+
+    if (!target) return;
     if (target.spawnProtectionUntil > Date.now()) return;
-    io.to(targetId).emit('player-hit', targetId, damage);
-    target.health = Math.max(0, (target.health ?? 100) - damage);
-    if (target.health <= 0) target.alive = false;
+
+    io.to(targetId).emit(
+      'player-hit',
+      targetId,
+      damage
+    );
+
+    target.health = Math.max(
+      0,
+      (target.health ?? 100) - damage
+    );
+
+    if (target.health <= 0) {
+      target.alive = false;
+    }
+
     broadcastArena(code);
   });
 
   // Admin sends a chat message — broadcast to every connected client across
   // every arena, since it's a server-wide announcement.
   socket.on('admin-message', (text) => {
+    // SECURITY CHECK:
+    // Only authenticated admins can send server-wide messages.
+    if (
+      !socket.data.isAdmin ||
+      typeof text !== 'string' ||
+      !text.trim()
+    ) {
+      return;
+    }
+
     const entry = {
       from: 'admin',
-      text,
+      text: text.trim().substring(0, 200),
       ts: Date.now()
     };
+
     io.emit('server-chat', entry);
   });
 
@@ -304,35 +523,77 @@ io.on('connection', (socket) => {
   // lobby players and the admin dashboard.
   socket.on('chat', (text) => {
     const code = socket.data.arenaCode;
-    if (typeof text !== 'string' || !text.trim()) return;
+
+    if (
+      typeof text !== 'string' ||
+      !text.trim()
+    ) {
+      return;
+    }
+
     const name = code
-      ? (arenas[code]?.players[socket.id]?.name || '<UNKNOWN>')
-      : (socket.data.playerName || '<UNKNOWN>');
+      ? (
+          arenas[code]?.players[socket.id]?.name ||
+          '<UNKNOWN>'
+        )
+      : (
+          socket.data.playerName ||
+          '<UNKNOWN>'
+        );
+
     const entry = {
       from: name,
       text: text.trim().substring(0, 200),
       ts: Date.now(),
       arena: code || null
     };
-    io.to('__admin__').emit('server-chat', entry);
+
+    io.to('__admin__').emit(
+      'server-chat',
+      entry
+    );
+
     if (code && arenas[code]) {
-      io.to(code).emit('server-chat', entry);
+      io.to(code).emit(
+        'server-chat',
+        entry
+      );
       return;
     }
-    for (const [id, connectedSocket] of io.sockets.sockets) {
-      if (!connectedSocket.data.arenaCode && !connectedSocket.data.isAdmin) {
-        connectedSocket.emit('server-chat', entry);
+
+    for (const [
+      id,
+      connectedSocket
+    ] of io.sockets.sockets) {
+      if (
+        !connectedSocket.data.arenaCode &&
+        !connectedSocket.data.isAdmin
+      ) {
+        connectedSocket.emit(
+          'server-chat',
+          entry
+        );
       }
     }
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log(
+      'Client disconnected:',
+      socket.id
+    );
+
     const code = socket.data.arenaCode;
-    if (code && arenas[code] && arenas[code].players[socket.id]) {
+
+    if (
+      code &&
+      arenas[code] &&
+      arenas[code].players[socket.id]
+    ) {
       delete arenas[code].players[socket.id];
       broadcastArena(code);
     }
+
     broadcastLobby();
     broadcastAdminState();
   });
@@ -341,7 +602,11 @@ io.on('connection', (socket) => {
 // -------------------------------
 // START SERVER
 // -------------------------------
+
 const PORT = process.env.PORT || 3001;
+
 http.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(
+    `Server running on port ${PORT}`
+  );
 });

@@ -7,6 +7,7 @@ const playersEl = document.getElementById('players');
 const chatEl = document.getElementById('chat');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
+const authStatus = document.getElementById('authStatus');
 const pendingKickIds = new Set();
 
 let authenticated = false;
@@ -21,6 +22,11 @@ socket.on('connect', () => {
 
 function showLogin() {
   authenticated = false;
+
+  if (authStatus) {
+    authStatus.textContent = 'Not authenticated';
+    authStatus.style.color = '#8b1e1e';
+  }
 
   playersEl.innerHTML = '';
   chatEl.innerHTML = '';
@@ -41,6 +47,11 @@ function showLogin() {
     password,
     (result) => {
       if (!result?.ok) {
+        if (authStatus) {
+          authStatus.textContent = 'Not authenticated';
+          authStatus.style.color = '#8b1e1e';
+        }
+
         window.alert(
           result?.error || 'Admin login failed.'
         );
@@ -49,6 +60,11 @@ function showLogin() {
       }
 
       authenticated = true;
+
+      if (authStatus) {
+        authStatus.textContent = 'Authenticated';
+        authStatus.style.color = '#16803c';
+      }
 
       msgInput.disabled = false;
       sendBtn.disabled = false;

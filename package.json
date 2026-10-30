@@ -1,18 +1,9 @@
 {
-  "name": "rival-surge",
-  "version": "1.0.0",
-  "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --mac dir --x64"
+    "start": "node server.js"
   },
-  "build": {
-    "appId": "com.rivalsurge.app",
-    "productName": "Rival Surge",
-    "mac": { "category": "public.app-category.games" }
-  },
-  "devDependencies": {
-    "electron": "26.6.10",
-    "electron-builder": "24.13.3"
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
   }
 }
